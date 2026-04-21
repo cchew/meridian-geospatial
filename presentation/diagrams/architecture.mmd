@@ -1,7 +1,13 @@
-graph LR
-    A["Streamlit UI"] -->|"NL query"| B["NL Input Layer<br/>(Claude tool use)"]
-    B -->|"structured params"| C["Spatial Data<br/>(GeoPandas / DuckDB)"]
-    C -->|"demand + candidate points"| D["Routing<br/>(ArcGIS Online OD Matrix,<br/>Parquet cache)"]
-    D -->|"travel time matrix"| E["MCLP Optimiser<br/>(PuLP)"]
-    E -->|"optimal sites + coverage stats"| F["Output Layer<br/>(Claude narrative)"]
-    F -->|"narrative + data"| G["Map<br/>(Folium / Plotly)"]
+graph TB
+    subgraph query ["Query"]
+        direction LR
+        A["Streamlit UI"] -->|"NL query"| B["Claude (tool use)"]
+        B -->|"QueryParams"| C["GeoPandas · DuckDB"]
+        C -->|"demand + candidates"| D["ArcGIS OD Matrix (cached)"]
+    end
+    subgraph answer ["Answer"]
+        direction LR
+        E["MCLP (PuLP)"] -->|"optimal sites"| F["Claude (narrative)"]
+        F -->|"briefing + data"| G["Folium · Plotly"]
+    end
+    D -->|"travel time matrix"| E

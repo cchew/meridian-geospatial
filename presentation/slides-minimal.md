@@ -206,7 +206,7 @@ section.appendix h2 {
 <!-- _class: lead -->
 <!-- _paginate: false -->
 
-# AI-Powered Health Facility Planning
+# Meridian: Health Facility Planning
 
 <br/>
 Ask a plain-English question. Get an optimised answer in seconds.
@@ -219,15 +219,6 @@ Ching Chew · April 2026
 
 <!-- note:
 Pre-show: Streamlit app running locally, Western NSW PHN loaded, cache warm.
-
-Opening questions for the room:
-- If someone asked you "where should we commission two new GP clinics in Western NSW?" — what would you do?
-- Who would you call? How long would it take to get an answer you could defend?
-
-That gap is what this demo is about.
-
-For exec audiences: lead with the decision-support angle. The tool answers a question they couldn't answer independently, in seconds, with a briefing-quality narrative ready to put in a planning document.
-For dev/GIS audiences: the interesting part is the architecture — LLM handles NL translation, classical solver handles optimisation. Neither replaces the other.
 -->
 
 ---
@@ -250,7 +241,12 @@ Don't answer the question. Let it sit.
 
 Every person in the room should think of a real planning decision they've watched stall waiting for analysis.
 
-The answer today: queue a GIS request. Two weeks. Email thread. Assumptions may or may not match current policy. Planning cycle moves on.
+Who would you call? How long would it take to get an answer you could defend?
+
+That gap is what this demo is about.
+
+For exec audiences: lead with the decision-support angle. The tool answers a question they couldn't answer independently, in seconds, with a briefing-quality narrative ready to put in a planning document.
+For dev/GIS audiences: the interesting part is the architecture — LLM handles NL translation, classical solver handles optimisation. Neither replaces the other.
 -->
 
 ---
@@ -263,7 +259,7 @@ The answer today: queue a GIS request. Two weeks. Email thread. Assumptions may 
 - What-if questions ("what if we added a third clinic?") require a new request
 <br/>
 
-**GIS specialists are scarce. Repetitive what-if queries are not the highest-value use of their time.**
+**GIS specialists are scarce. Repetitive what-if queries might not be the highest-value use of their time.**
 
 <!-- note:
 This is not a criticism of GIS teams. It is a structural problem.
@@ -275,16 +271,12 @@ For GIS practitioners in the room: frame this as additive, not competitive.
 
 ---
 
-## Before and After
+<!-- _class: break -->
 
----
-
-![bg left:50% contain](screenshots/mode1-coverage-map.png)
-![bg right:50% contain](screenshots/mode2-proposed-sites.png)
+![bg contain](screenshots/mode1-coverage-map.png)
 
 <!-- note:
 Left: Mode 1 output. Coverage gap diagnostic. Towns without a GP within 45 minutes shown in red/amber.
-Right: Mode 2 output. Same map with optimised clinic locations overlaid. Green markers show proposed sites. The gap shrinks.
 
 No narration needed. Let the gap do the work.
 
@@ -311,8 +303,6 @@ Demo narration:
 
 For exec audiences: "The narrative is ready to go into a planning document."
 For dev audiences: "The model filled a typed schema. No parsing. The map is Folium rendered in Streamlit."
-
-Teams/ADO adaptation: same architecture, different frontend. Streamlit swaps for a Teams tab or SharePoint page.
 -->
 
 ---
@@ -368,6 +358,20 @@ For developers: the full tool definition and solver code are in the GitHub repo.
 ---
 
 <!-- _class: break -->
+
+![bg contain](screenshots/mode2-proposed-sites.png)
+
+<!-- note:
+Right: Mode 2 output. Same map with optimised clinic locations overlaid. Green markers show proposed sites. The gap shrinks.
+
+No narration needed. Let the gap do the work.
+
+"That's the question. That's the answer. The time between: seconds."
+-->
+
+---
+
+<!-- _class: break -->
 <!-- _paginate: false -->
 
 # Live Demo
@@ -384,14 +388,14 @@ Demo narration:
 6. Stats panel: before/after coverage numbers
 7. Narrative: briefing note with proposed locations named, population gain quantified
 
-"That took about 10 seconds. The equivalent GIS request takes two weeks."
+"That took about 10 seconds. How long would an equivalent GIS request?"
 
 Audience question to seed: "What would you do differently with this answer?"
 -->
 
 ---
 
-## Before and After
+<!-- _class: break -->
 
 ![bg contain](screenshots/before-after-stats.png)
 
@@ -409,7 +413,7 @@ For policy audiences: reference the November 2025 Bulk Billing Practice Incentiv
 
 ## Lessons Learnt
 
-- **Data sourcing was harder than the solver.** No authoritative geocoded GP dataset exists. NHSD snapshot supplemented with postcode centroid fallbacks.
+- **Data sourcing was harder than the solver.** No authoritative geocoded GP dataset exists. GP practice locations came from a Nov 2025 Healthdirect snapshot; rural practices without precise coordinates were placed at their postcode centre.
 - **The LLM was not the hard part.** Tool use for query parsing worked first attempt with a clear schema.
 - **Scope discipline was the most important decision.** Western NSW PHN only. GP only. Everything else went to a limitations section.
 - **Candidate site derivation is approximate.** Straight-line distance pre-filter; some candidates are slightly mis-ranked before routing validation.
@@ -435,9 +439,9 @@ The same architecture applies anywhere a powerful analytical tool sits behind a 
 
 ![w:900](diagrams/architecture.svg)
 
-- **Legal discovery**: NL to search parameters, retrieval system does the search, LLM summarises
-- **Financial modelling**: NL to model inputs, spreadsheet engine runs the model, LLM writes the commentary
-- **Engineering simulation**: NL to simulation parameters, solver runs, LLM interprets the output
+- **Procurement evaluation**: NL → scoring criteria, evaluation engine rates tender submissions, LLM writes value-for-money assessment
+- **Infrastructure business case**: NL → demand inputs, cost-benefit model runs, LLM writes strategic assessment note
+- **Workforce planning**: NL → scenario parameters, supply/demand model runs, LLM writes budget submission narrative
 
 <br/>
 
@@ -455,10 +459,7 @@ GIS teams freed from repetitive what-if queries get their time back for the inte
 
 ## Conclusion
 
-"The bottleneck was never the algorithm."
-<br/>
-
-- Spatial decision science exists and works. The barrier is access.
+- Spatial decision science exists and works. The barrier is access to GIS specialists.
 - Structured tool use removes the translation bottleneck without removing the tool.
 - Policy staff get self-service access to rigorous analysis. GIS specialists get their time back.
 <br/>
@@ -488,7 +489,6 @@ Do not end on a roadmap or product slide. End on the insight.
 
 **Authentication and access**
 - ArcGIS Online: developer licence is adequate for demo; production needs an organisational licence with API rate management.
-- Claude API: request throttling and audit logging required for any production deployment above OFFICIAL sensitivity.
 
 **Data sensitivity**
 - Patient data is never in scope. PHN boundaries, facility locations and population figures are all public.
@@ -548,9 +548,7 @@ ORS works well for the demo. ArcGIS Online is more accurate for regional and rem
 **Two blockers**
 
 1. **Routing API cost**: full OD matrix for 2,400+ Australian localities at national scale is significant call volume. Mitigation: pre-compute once, refresh quarterly, store as Parquet.
-2. **PHN boundary edge cases**: some localities straddle PHN boundaries. Current implementation allocates to primary PHN by centroid; multi-PHN demand points need explicit handling.
-
-**Effort estimate**: 2-3 additional weekends to validate data pipelines across all 31 PHNs and pre-compute the national routing matrix.
+2. **PHN boundary edge cases**: PHNs are defined as SA3 aggregates, but ABS locality polygons don't always align to SA3 boundaries. Localities near PHN borders can straddle two PHNs. Current implementation allocates by locality centroid (standard approach); this works for most cases but edge towns need explicit handling.
 
 <!-- note:
 For technical decision-makers: the blockers are engineering problems, not research problems. Both have clear solutions.
