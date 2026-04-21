@@ -2,7 +2,7 @@
 
 AI-powered spatial decision support for Australian primary health care planning. Ask plain-English questions about GP coverage gaps; get optimised facility placement recommendations with briefing-quality narrative.
 
-![App interface](app-interface.png)
+![Mode 1 - Diagnostic](presentation/screenshots/mode1-coverage-map.png)
 
 **Flow:** Natural language query → Claude API (NL→params) → [GeoPandas](https://geopandas.org/) + [ArcGIS Network Analyst](https://www.esri.com/en-us/arcgis/products/arcgis-network-analyst/overview) routing → [PuLP](https://coin-or.github.io/pulp/) [MCLP](https://en.wikipedia.org/wiki/Maximum_coverage_problem) solver → Claude API (narrative) → [Folium](https://python-visualization.github.io/folium/) map in [Streamlit](https://streamlit.io/)
 
