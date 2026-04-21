@@ -1,0 +1,12 @@
+*.DS_Store
+*.pyc
+.env
+.pytest_cache/
+.streamlit/secrets.toml
+.superpowers/
+.venv/
+__pycache__/
+cache/*
+!cache/.gitkeep
+data/*
+!data/.gitkeep
