@@ -2,7 +2,7 @@
 
 AI-powered spatial decision support for Australian primary health care planning. Ask plain-English questions about GP coverage gaps; get optimised facility placement recommendations with briefing-quality narrative.
 
-**Flow:** Natural language query → Claude API (NL→params) → [GeoPandas](https://geopandas.org/) + [ArcGIS Network Analyst](https://www.esri.com/en-us/arcgis/products/arcgis-network-analyst/overview) routing → [PuLP](https://coin-or.github.io/pulp/) [MCLP](https://en.wikipedia.org/wiki/Maximum_coverage_location_problem) solver → Claude API (narrative) → [Folium](https://python-visualization.github.io/folium/) map in [Streamlit](https://streamlit.io/)
+**Flow:** Natural language query → Claude API (NL→params) → [GeoPandas](https://geopandas.org/) + [ArcGIS Network Analyst](https://www.esri.com/en-us/arcgis/products/arcgis-network-analyst/overview) routing → [PuLP](https://coin-or.github.io/pulp/) [MCLP](https://en.wikipedia.org/wiki/Maximum_coverage_problem) solver → Claude API (narrative) → [Folium](https://python-visualization.github.io/folium/) map in [Streamlit](https://streamlit.io/)
 
 ---
 
@@ -176,7 +176,7 @@ All datasets are publicly available from Australian government sources:
 
 | Dataset | Source |
 |---|---|
-| PHN boundaries | [AIHW](https://www.aihw.gov.au/reports-data/myhospitals/sectors/primary-health-networks) |
+| PHN boundaries | [data.gov.au](https://data.gov.au/data/dataset/phn-boundaries-used-by-the-nbra) |
 | Population localities | [ABS](https://www.abs.gov.au/statistics/standards/australian-statistical-geography-standard-asgs-edition-3/jul2021-jun2026) (ASGS + ERP) |
 | GP / facility locations | [Health Workforce Dataset](https://hwd.health.gov.au/) |
 | Distribution Priority Areas | [Department of Health, Disability and Ageing](https://www.health.gov.au/topics/doctors-and-specialists/what-we-do/distribution-priority-areas) |
