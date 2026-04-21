@@ -309,23 +309,25 @@ For dev audiences: "The model filled a typed schema. No parsing. The map is Foli
 
 ## How It Works
 
-Seven components. Two Claude API calls.
-
-![w:1000](diagrams/architecture.svg)
+**Query &nbsp;&nbsp;&nbsp;** Streamlit → Claude (tool use) → GeoPandas · DuckDB → ArcGIS OD (cached)
+**Answer** &nbsp; MCLP (PuLP) → Claude (narrative) → Folium · Plotly
+<br/>
 
 The LLM translates the question and writes the answer. A 40-year-old algorithm does the optimisation.
 
 <!-- note:
-Walk through left to right:
-1. Streamlit UI: text input and mode toggle
-2. NL Input Layer: Claude tool use parses the query into typed params (region, threshold, k, pop_min)
-3. Spatial Data: GeoPandas + DuckDB/Parquet - population centres, GP locations, PHN boundaries
-4. Routing: ArcGIS Online OD Matrix REST API - travel time from every demand point to every facility. Pre-computed and cached as Parquet for the demo.
-5. MCLP Solver: PuLP integer program - finds k sites maximising covered population. Runs in seconds at PHN scale.
-6. Output Layer: Claude narrative - structured results in, briefing note out. Raw user input never reaches this prompt.
+Query row (left to right):
+1. Streamlit: text input and mode toggle
+2. Claude tool use: parses NL query into typed params (region, threshold, k, pop_min)
+3. GeoPandas/DuckDB: population centres, GP locations, PHN boundaries
+4. ArcGIS OD Matrix: travel time from every demand point to every facility. Pre-computed, cached as Parquet.
+
+Answer row (left to right):
+5. MCLP/PuLP: integer program finds k sites maximising covered population. Runs in seconds at PHN scale.
+6. Claude narrative: structured results in, briefing note out. Raw user input never reaches this prompt.
 7. Folium/Plotly: choropleth map + stats panel in Streamlit
 
-For GIS audiences: ORS (OpenRouteService) is implemented as an open-source alternative routing provider.
+For GIS audiences: ORS (OpenRouteService) is an open-source alternative routing provider.
 For exec audiences: "Connects tools your organisation already has or can access."
 -->
 
@@ -437,7 +439,9 @@ Teams adaptation: same architecture, same solver. Different routing provider if 
 
 The same architecture applies anywhere a powerful analytical tool sits behind a specialist translation layer.
 
-![w:900](diagrams/architecture.svg)
+**Natural Language Query -> Structured Query -> Analytics Tool -> Natural Language Response**
+
+<br/>
 
 - **Procurement evaluation**: NL → scoring criteria, evaluation engine rates tender submissions, LLM writes value-for-money assessment
 - **Infrastructure business case**: NL → demand inputs, cost-benefit model runs, LLM writes strategic assessment note
