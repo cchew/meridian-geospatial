@@ -521,7 +521,7 @@ ArcGIS licence: existing organisational licences typically cover REST API calls.
 | PHN boundaries | AIHW GeoJSON | 31 PHN regions |
 | Population localities | ABS (ASGS + ERP) | 2021 Census |
 | GP/facility locations | NHSD snapshot | Nov 2025; postcode centroid fallback |
-| District of Workforce Shortage | DoH Shapefile | DPA classification signal |
+| District of Workforce Shortage | DHDA Shapefile | DPA classification signal |
 | ARIA+ remoteness | AIHW/ABS | Contextual layer for narrative |
 
 **Routing alternatives**
@@ -574,7 +574,7 @@ The national routing pre-compute is a one-time cost. Once computed and cached, i
 Replace population count with a composite demand score:
 
 - PPH (Potentially Preventable Hospitalisations) rate by locality - captures unmet primary care need
-- DPA classification - existing DoH workforce shortage signal
+- DPA classification - existing DHDA workforce shortage signal
 - Chronic disease prevalence (AIHW) - demand-side load factor
 
 The solver formulation is identical: replace `pops[i]` with `demand_scores[i]`. The policy interpretation changes significantly.
