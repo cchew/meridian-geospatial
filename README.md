@@ -180,5 +180,5 @@ All datasets are publicly available from Australian government sources:
 |---|---|
 | PHN boundaries | [data.gov.au](https://data.gov.au/data/dataset/phn-boundaries-used-by-the-nbra) |
 | Population localities | [ABS](https://www.abs.gov.au/statistics/standards/australian-statistical-geography-standard-asgs-edition-3/jul2021-jun2026) (ASGS + ERP) |
-| GP / facility locations | [Health Workforce Dataset](https://hwd.health.gov.au/) |
+| GP practice locations | [Geoscience Australia NHSD](https://ecat.ga.gov.au/geonetwork/srv/api/records/1d95ca95-8bd7-4f25-835f-d33c0219435e) |
 | Distribution Priority Areas | [Department of Health, Disability and Ageing](https://www.health.gov.au/topics/doctors-and-specialists/what-we-do/distribution-priority-areas) |

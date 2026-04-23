@@ -415,7 +415,7 @@ For policy audiences: reference the November 2025 Bulk Billing Practice Incentiv
 
 ## Lessons Learnt
 
-- **Data sourcing was harder than the solver.** No authoritative geocoded GP dataset exists. GP practice locations came from a Nov 2025 Healthdirect snapshot; rural practices without precise coordinates were placed at their postcode centre.
+- **Data sourcing was harder than the solver.** GP practice locations sourced from the Geoscience Australia NHSD MapServer (Nov 2025); rural practices without precise coordinates were placed at their postcode centre.
 - **The LLM was not the hard part.** Tool use for query parsing worked first attempt with a clear schema.
 - **Scope discipline was the most important decision.** Western NSW PHN only. GP only. Everything else went to a limitations section.
 - **Candidate site derivation is approximate.** Straight-line distance pre-filter; some candidates are slightly mis-ranked before routing validation.
@@ -521,7 +521,7 @@ ArcGIS licence: existing organisational licences typically cover REST API calls.
 | PHN boundaries | AIHW GeoJSON | 31 PHN regions |
 | Population localities | ABS (ASGS + ERP) | 2021 Census |
 | GP/facility locations | NHSD snapshot | Nov 2025; postcode centroid fallback |
-| District of Workforce Shortage | DHDA Shapefile | DPA classification signal |
+| Distribution Priority Areas (DPA) | DHDA Shapefile | GP-specific workforce classification |
 | ARIA+ remoteness | AIHW/ABS | Contextual layer for narrative |
 
 **Routing alternatives**
