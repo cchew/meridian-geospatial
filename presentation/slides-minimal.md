@@ -588,3 +588,33 @@ For health informatics audiences: the PPH variable is the most defensible demand
 
 The autoresearch loop is a future iteration. The current architecture is already set up for it: the output layer makes a Claude API call with structured data. Extending to tool use with a search tool is a small change.
 -->
+
+---
+
+<!-- _class: appendix -->
+<!-- _paginate: false -->
+
+## Appendix E - MCLP: How the Optimiser Works
+
+**Maximal Coverage Location Problem** (Church & ReVelle, 1974)
+
+Given k facilities to place, find the k locations that maximise the total population within a coverage threshold of at least one facility.
+
+**Decision variables**
+
+- x_j = 1 if candidate site j is selected; 0 otherwise
+- y_i = 1 if demand point i is covered; 0 otherwise
+
+**Objective:** maximise &Sigma; p<sub>i</sub> y<sub>i</sub> — the sum of population at covered demand points
+
+**Key constraint:** y<sub>i</sub> can only equal 1 if at least one selected site j is within the threshold of demand point i
+
+The solver evaluates the full combinatorial space and returns a provably optimal solution.
+
+<!-- note:
+For executives: think of it as a coverage problem. You have k resources to deploy. The model finds the deployment that puts the most people within range. Nothing more, nothing less.
+
+For technical audiences: integer linear program solved via PuLP (CBC backend). No metaheuristics. The optimality guarantee holds because PHN-scale instances are small enough for exact methods.
+
+The algorithm is 50 years old. The contribution here is the natural language interface that makes it accessible without a GIS specialist.
+-->
