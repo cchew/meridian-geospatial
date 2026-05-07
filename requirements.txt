@@ -1,8 +1,6 @@
 geopandas==1.1.2
 anthropic==0.94.0
 streamlit==1.54.0
-folium==0.15.0
-streamlit-folium==0.12.0
 plotly==6.7.0
 PuLP==2.8.0
 pyarrow==17.0.0

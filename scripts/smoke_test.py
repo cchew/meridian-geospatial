@@ -14,6 +14,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 ROOT = Path(__file__).parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 PASS = "  \u2713"
 FAIL = "  \u2717"
 SKIP = "  \u25cb"
@@ -76,7 +78,7 @@ print("\n2. Python dependencies")
 def _import(name: str):
     return lambda: __import__(name)
 
-for pkg in ["geopandas", "anthropic", "streamlit", "plotly", "pulp", "pyarrow", "folium", "shapely", "fiona"]:
+for pkg in ["geopandas", "anthropic", "streamlit", "plotly", "pulp", "pyarrow", "shapely", "fiona"]:
     results.append(check(f"import {pkg}", _import(pkg)))
 
 # ── 3. API connectivity ────────────────────────────────────────────────────────

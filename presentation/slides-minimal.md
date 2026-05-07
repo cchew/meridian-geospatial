@@ -302,15 +302,15 @@ Demo narration:
 6. Narrative panel: briefing-quality text naming the towns explicitly, population affected
 
 For exec audiences: "The narrative is ready to go into a planning document."
-For dev audiences: "The model filled a typed schema. No parsing. The map is Folium rendered in Streamlit."
+For dev audiences: "The model filled a typed schema. No parsing. The map is Plotly rendered in Streamlit."
 -->
 
 ---
 
 ## How It Works
 
-**Query &nbsp;&nbsp;&nbsp;** Streamlit → Claude (tool use) → GeoPandas · DuckDB → ArcGIS OD (cached)
-**Answer** &nbsp; MCLP (PuLP) → Claude (narrative) → Folium · Plotly
+**Query &nbsp;&nbsp;&nbsp;** Streamlit → Claude (tool use) → GeoPandas → ArcGIS OD (Parquet cache)
+**Answer** &nbsp; MCLP (PuLP) → Claude (narrative) → Plotly
 <br/>
 
 The LLM translates the question and writes the answer. A 40-year-old algorithm does the optimisation.
@@ -319,13 +319,13 @@ The LLM translates the question and writes the answer. A 40-year-old algorithm d
 Query row (left to right):
 1. Streamlit: text input and mode toggle
 2. Claude tool use: parses NL query into typed params (region, threshold, k, pop_min)
-3. GeoPandas/DuckDB: population centres, GP locations, PHN boundaries
+3. GeoPandas: population centres, GP locations, PHN boundaries
 4. ArcGIS OD Matrix: travel time from every demand point to every facility. Pre-computed, cached as Parquet.
 
 Answer row (left to right):
 5. MCLP/PuLP: integer program finds k sites maximising covered population. Runs in seconds at PHN scale.
 6. Claude narrative: structured results in, briefing note out. Raw user input never reaches this prompt.
-7. Folium/Plotly: choropleth map + stats panel in Streamlit
+7. Plotly: choropleth map + stats panel in Streamlit
 
 For GIS audiences: ORS (OpenRouteService) is an open-source alternative routing provider.
 For exec audiences: "Connects tools your organisation already has or can access."
