@@ -1,5 +1,5 @@
 from pathlib import Path
-from scripts.download_data import download_filipcikova_sa2
+from scripts.download_data import download_filipcikova_sa2, download_sa2_boundaries
 
 
 def test_download_filipcikova_sa2_writes_expected_file(tmp_path):
@@ -12,3 +12,15 @@ def test_download_filipcikova_sa2_writes_expected_file(tmp_path):
     df = pd.read_csv(out, nrows=1)
     expected = {"SA2_CODE21", "gp_duration", "gp_bulk_billing_duration", "Person", "STE_NAME21"}
     assert expected.issubset(df.columns)
+
+
+def test_download_sa2_boundaries_national(tmp_path):
+    out = tmp_path / "sa2_2021_aust.geojson"
+    download_sa2_boundaries(out)
+    assert out.exists()
+    import geopandas as gpd
+    gdf = gpd.read_file(out)
+    # ABS reports 2,473 SA2s in ASGS 2021 Edition 3
+    assert 2400 <= len(gdf) <= 2500, f"expected ~2473 SA2s, got {len(gdf)}"
+    assert "SA2_CODE21" in gdf.columns
+    assert "SA2_NAME21" in gdf.columns

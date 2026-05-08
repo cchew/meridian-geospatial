@@ -55,6 +55,12 @@ ABS_CENSUS_NSW_URL = (
 #    Pre-computed travel times to nearest GP and bulk-billing GP for all SA2s nationally.
 FILIPCIKOVA_SA2_URL = "https://ndownloader.figshare.com/files/57536281"
 
+# 7. ABS SA2 2021 boundaries — ArcGIS REST API (ASGS Edition 3, 2021, ~2,473 SA2s)
+#    Paginated query; returns GeoJSON. Requires paging because national total exceeds server limit.
+ABS_SA2_BASE = (
+    "https://geo.abs.gov.au/arcgis/rest/services/ASGS2021/SA2/MapServer/0/query"
+)
+
 
 def _get(url: str, **kwargs) -> requests.Response:
     resp = requests.get(url, timeout=120, **kwargs)
@@ -192,6 +198,46 @@ def download_filipcikova_sa2(out_path: Path) -> None:
     out_path.write_bytes(resp.content)
 
 
+def download_sa2_boundaries(out_path: Path) -> None:
+    """Download national SA2 2021 boundaries from ABS hosted ArcGIS, paged."""
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fields = "sa2_code_2021,sa2_name_2021,sa3_code_2021,state_code_2021,state_name_2021"
+    page_size = 1000
+    offset = 0
+    features: list[dict] = []
+    while True:
+        params = {
+            "where": "1=1",
+            "outFields": fields,
+            "f": "geojson",
+            "returnGeometry": "true",
+            "resultOffset": offset,
+            "resultRecordCount": page_size,
+        }
+        resp = _get(ABS_SA2_BASE, params=params)
+        page = resp.json()
+        page_features = page.get("features", [])
+        if not page_features:
+            break
+        features.extend(page_features)
+        if len(page_features) < page_size:
+            break
+        offset += page_size
+
+    # Normalise field names to upper-snake to match Filipcikova
+    for f in features:
+        props = f["properties"]
+        f["properties"] = {
+            "SA2_CODE21": str(props["sa2_code_2021"]),
+            "SA2_NAME21": props["sa2_name_2021"],
+            "SA3_CODE21": str(props.get("sa3_code_2021", "")),
+            "STE_CODE21": str(props.get("state_code_2021", "")),
+            "STE_NAME21": props.get("state_name_2021", ""),
+        }
+    out = {"type": "FeatureCollection", "features": features}
+    out_path.write_text(json.dumps(out))
+
+
 def _generate_checksums(data_dir: Path, checksum_file: Path) -> None:
     patterns = ["*.geojson", "*.gpkg", "*.shp", "*.csv"]
     lines = []
@@ -215,6 +261,7 @@ def main() -> None:
     download_dpa()
     download_population()
     download_filipcikova_sa2(DATA_DIR / "health_access_sa2.csv")
+    download_sa2_boundaries(DATA_DIR / "sa2_2021_aust.geojson")
 
     print()
     checksum_file = DATA_DIR / "checksums.sha256"
