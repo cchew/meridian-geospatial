@@ -1,5 +1,3 @@
-import os
-import pytest
 from pathlib import Path
 from scripts.download_data import download_filipcikova_sa2
 
