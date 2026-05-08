@@ -61,6 +61,13 @@ ABS_SA2_BASE = (
     "https://geo.abs.gov.au/arcgis/rest/services/ASGS2021/SA2/MapServer/0/query"
 )
 
+# 8. DHDA PHN 2023 ↔ SA2 (ASGS 2021) concordance (official; CC BY 4.0 implied via health.gov.au)
+#    Confirmed URL: HEAD returns HTTP 200, content-type xlsx, 141 KB, last-modified 2024-03-21.
+PHN_SA2_CONCORDANCE_URL = (
+    "https://www.health.gov.au/sites/default/files/2024-03"
+    "/primary-health-networks-phn-2023-statistical-area-level-2-2021.xlsx"
+)
+
 
 def _get(url: str, **kwargs) -> requests.Response:
     resp = requests.get(url, timeout=120, **kwargs)
@@ -238,6 +245,39 @@ def download_sa2_boundaries(out_path: Path) -> None:
     out_path.write_text(json.dumps(out))
 
 
+def download_phn_sa2_concordance(out_path: Path) -> None:
+    """Download DHDA's official PHN 2023 ↔ SA2 (ASGS 2021) concordance."""
+    import pandas as pd
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    resp = requests.get(PHN_SA2_CONCORDANCE_URL, timeout=120, allow_redirects=True)
+    resp.raise_for_status()
+    raw = out_path.with_suffix(".raw")
+    raw.write_bytes(resp.content)
+
+    if PHN_SA2_CONCORDANCE_URL.endswith(".xlsx"):
+        df = pd.read_excel(raw)
+    else:
+        df = pd.read_csv(raw)
+
+    rename = {
+        "SA2_CODE_2021": "SA2_CODE21",
+        "SA2_MAINCODE_2021": "SA2_CODE21",
+        "PHN_CODE_2023": "PHN_CODE",
+        "PHN_NAME_2023": "PHN_NAME",
+    }
+    df = df.rename(columns={k: v for k, v in rename.items() if k in df.columns})
+    required = {"SA2_CODE21", "PHN_CODE", "PHN_NAME"}
+    missing = required - set(df.columns)
+    if missing:
+        raise RuntimeError(
+            f"Concordance file missing columns {missing}. Got: {list(df.columns)}"
+        )
+    df["SA2_CODE21"] = df["SA2_CODE21"].astype(str)
+    df[["SA2_CODE21", "PHN_CODE", "PHN_NAME"]].to_csv(out_path, index=False)
+    raw.unlink()
+
+
 def _generate_checksums(data_dir: Path, checksum_file: Path) -> None:
     patterns = ["*.geojson", "*.gpkg", "*.shp", "*.csv"]
     lines = []
@@ -262,6 +302,7 @@ def main() -> None:
     download_population()
     download_filipcikova_sa2(DATA_DIR / "health_access_sa2.csv")
     download_sa2_boundaries(DATA_DIR / "sa2_2021_aust.geojson")
+    download_phn_sa2_concordance(DATA_DIR / "phn_sa2_concordance.csv")
 
     print()
     checksum_file = DATA_DIR / "checksums.sha256"

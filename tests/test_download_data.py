@@ -1,5 +1,5 @@
 from pathlib import Path
-from scripts.download_data import download_filipcikova_sa2, download_sa2_boundaries
+from scripts.download_data import download_filipcikova_sa2, download_sa2_boundaries, download_phn_sa2_concordance
 
 
 def test_download_filipcikova_sa2_writes_expected_file(tmp_path):
@@ -12,6 +12,17 @@ def test_download_filipcikova_sa2_writes_expected_file(tmp_path):
     df = pd.read_csv(out, nrows=1)
     expected = {"SA2_CODE21", "gp_duration", "gp_bulk_billing_duration", "Person", "STE_NAME21"}
     assert expected.issubset(df.columns)
+
+
+def test_download_phn_concordance(tmp_path):
+    out = tmp_path / "phn_sa2_concordance.csv"
+    download_phn_sa2_concordance(out)
+    assert out.exists()
+    import pandas as pd
+    df = pd.read_csv(out, dtype=str)
+    assert {"SA2_CODE21", "PHN_CODE", "PHN_NAME"}.issubset(df.columns)
+    assert df["PHN_NAME"].nunique() == 31
+    assert (df["PHN_NAME"] == "Western NSW").any()
 
 
 def test_download_sa2_boundaries_national(tmp_path):
