@@ -23,6 +23,9 @@ def test_download_phn_concordance(tmp_path):
     assert {"SA2_CODE21", "PHN_CODE", "PHN_NAME"}.issubset(df.columns)
     assert df["PHN_NAME"].nunique() == 31
     assert (df["PHN_NAME"] == "Western NSW").any()
+    # No SA2s without PHN assignment (DHDA includes special categories with NaN PHN)
+    assert df["PHN_CODE"].notna().all()
+    assert df["PHN_NAME"].notna().all()
 
 
 def test_download_sa2_boundaries_national(tmp_path):

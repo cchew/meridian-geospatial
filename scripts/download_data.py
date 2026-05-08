@@ -274,6 +274,7 @@ def download_phn_sa2_concordance(out_path: Path) -> None:
             f"Concordance file missing columns {missing}. Got: {list(df.columns)}"
         )
     df["SA2_CODE21"] = df["SA2_CODE21"].astype(str)
+    df = df.dropna(subset=["PHN_CODE", "PHN_NAME"])
     df[["SA2_CODE21", "PHN_CODE", "PHN_NAME"]].to_csv(out_path, index=False)
     raw.unlink()
 
