@@ -144,3 +144,30 @@ def _derive_candidates(
     if "locality_name" not in candidates_proj.columns and "UCL_NAME_2021" in candidates_proj.columns:
         candidates_proj["locality_name"] = candidates_proj["UCL_NAME_2021"]
     return candidates_proj.to_crs(epsg=4326)
+
+
+def load_sa2_access() -> pd.DataFrame:
+    """Filipcikova SA2 access table joined to PHN concordance.
+
+    Returns DataFrame with columns:
+      SA2_CODE21, STE_NAME21, PHN_CODE, PHN_NAME, Person,
+      gp_min, gp_bulk_billing_min, hospital_public_min, hospital_private_min,
+      emergency_min, pharmacy_min,
+      plus all raw _duration / _distance columns from the source file.
+    """
+    access = pd.read_csv(DATA_DIR / "health_access_sa2.csv", dtype={"SA2_CODE21": str})
+    concordance = pd.read_csv(
+        DATA_DIR / "phn_sa2_concordance.csv", dtype={"SA2_CODE21": str}
+    )
+    df = access.merge(concordance, on="SA2_CODE21", how="inner")
+
+    # Convert seconds → minutes for headline metrics
+    for col in (
+        "gp", "gp_bulk_billing",
+        "hospital_public", "hospital_private",
+        "emergency", "pharmacy",
+    ):
+        src = f"{col}_duration"
+        if src in df.columns:
+            df[f"{col}_min"] = df[src] / 60.0
+    return df
