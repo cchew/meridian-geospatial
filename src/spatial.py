@@ -171,3 +171,17 @@ def load_sa2_access() -> pd.DataFrame:
         if src in df.columns:
             df[f"{col}_min"] = df[src] / 60.0
     return df
+
+
+def load_sa2_geometries() -> gpd.GeoDataFrame:
+    """National SA2 polygons (ABS ASGS 2021)."""
+    sa2 = gpd.read_file(DATA_DIR / "sa2_2021_aust.geojson")
+    if sa2.crs is None or sa2.crs.to_epsg() != 4326:
+        sa2 = sa2.to_crs(epsg=4326)
+    sa2["SA2_CODE21"] = sa2["SA2_CODE21"].astype(str)
+    return sa2
+
+
+def list_phns(access: pd.DataFrame) -> list[str]:
+    """Sorted PHN names from the access/concordance table."""
+    return sorted(access["PHN_NAME"].dropna().unique().tolist())

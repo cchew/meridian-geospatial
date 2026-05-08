@@ -1,4 +1,4 @@
-from src.spatial import load_sa2_access
+from src.spatial import load_sa2_access, load_sa2_geometries, list_phns
 
 
 def test_load_sa2_access_columns():
@@ -35,3 +35,18 @@ def test_western_nsw_phn_subset_consistent():
     wn = df[df["PHN_NAME"] == "Western NSW"]
     over_count = (wn["gp_bulk_billing_min"] > 45).sum()
     assert over_count == 10, f"expected 10 Western NSW SA2s, got {over_count}"
+
+
+def test_load_sa2_geometries_national():
+    sa2 = load_sa2_geometries()
+    assert 2400 <= len(sa2) <= 2500
+    assert sa2.crs.to_epsg() == 4326
+    assert "SA2_CODE21" in sa2.columns
+
+
+def test_list_phns_returns_31_sorted():
+    df = load_sa2_access()
+    phns = list_phns(df)
+    assert len(phns) == 31
+    assert phns == sorted(phns)
+    assert "Western NSW" in phns
