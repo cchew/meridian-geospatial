@@ -185,3 +185,38 @@ def load_sa2_geometries() -> gpd.GeoDataFrame:
 def list_phns(access: pd.DataFrame) -> list[str]:
     """Sorted PHN names from the access/concordance table."""
     return sorted(access["PHN_NAME"].dropna().unique().tolist())
+
+
+def build_spatial_context_sa2(
+    params: QueryParams,
+    access: pd.DataFrame,
+    sa2: gpd.GeoDataFrame,
+) -> SpatialContext:
+    """SA2-based context for Mode 1 (diagnostic).
+
+    Mode 2 builder lives in `build_spatial_context_sa2_prescriptive` (Task 9).
+    """
+    from src.models import SpatialContext
+
+    phn_access = access[access["PHN_NAME"] == params.region].copy()
+    if phn_access.empty:
+        raise ValueError(f"No SA2s found for PHN: {params.region}")
+
+    demand = sa2.merge(phn_access, on="SA2_CODE21", how="inner")
+    demand["demand_id"] = demand["SA2_CODE21"]
+    demand["population"] = demand["Person"].fillna(0).astype(int)
+    demand["locality_name"] = demand["SA2_NAME21"]
+
+    # Centroid for any downstream routing (Mode 1 reads gp_min directly; centroid is harmless)
+    demand_centroids = demand.copy()
+    demand_centroids["geometry"] = (
+        demand.geometry.to_crs(epsg=7855).centroid.to_crs(epsg=4326)
+    )
+
+    empty_facilities = gpd.GeoDataFrame(geometry=[], crs="EPSG:4326")
+    empty_candidates = gpd.GeoDataFrame(geometry=[], crs="EPSG:4326")
+    return SpatialContext(
+        demand_points=demand_centroids,
+        existing_facilities=empty_facilities,
+        candidates=empty_candidates,
+    )

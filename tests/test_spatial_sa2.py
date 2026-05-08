@@ -50,3 +50,29 @@ def test_list_phns_returns_31_sorted():
     assert len(phns) == 31
     assert phns == sorted(phns)
     assert "Western NSW" in phns
+
+
+import pytest
+from src.models import QueryParams
+from src.spatial import build_spatial_context_sa2
+
+
+@pytest.fixture(scope="module")
+def access():
+    return load_sa2_access()
+
+
+@pytest.fixture(scope="module")
+def sa2():
+    return load_sa2_geometries()
+
+
+def test_diagnostic_mode_western_nsw_returns_demand(access, sa2):
+    params = QueryParams(mode="diagnostic", region="Western NSW",
+                          facility_type="gp", threshold_min=45)
+    ctx = build_spatial_context_sa2(params, access, sa2)
+    # Western NSW PHN: ~50 SA2s
+    assert 30 <= len(ctx.demand_points) <= 80
+    assert "gp_min" in ctx.demand_points.columns
+    assert "population" in ctx.demand_points.columns
+    assert ctx.demand_points["population"].sum() > 100_000
