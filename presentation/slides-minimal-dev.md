@@ -280,7 +280,7 @@ localities["population"] = localities["population"].fillna(0).astype(int)
 ```
 
 <div class="callout">
-  ABS Census prefixes the literal string <code>"UCL"</code>; the boundary GeoPackage doesn't. <br/>Five characters — a merge that silently produces zero matches if you miss it.
+  ABS Census prefixes the literal string <code>"UCL"</code>; the boundary GeoPackage doesn't. <br/>Three characters — a merge that silently produces zero matches if you miss it.
 </div>
 
 <!-- note:
