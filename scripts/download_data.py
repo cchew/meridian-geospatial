@@ -51,6 +51,10 @@ ABS_CENSUS_NSW_URL = (
     "/2021_GCP_UCL_for_NSW_short-header.zip"
 )
 
+# 6. Filipcikova et al. (2026) SA2 weighted travel times — Figshare (CC BY)
+#    Pre-computed travel times to nearest GP and bulk-billing GP for all SA2s nationally.
+FILIPCIKOVA_SA2_URL = "https://ndownloader.figshare.com/files/57536281"
+
 
 def _get(url: str, **kwargs) -> requests.Response:
     resp = requests.get(url, timeout=120, **kwargs)
@@ -180,6 +184,14 @@ def download_population() -> None:
     print(f"  Saved {dest.stat().st_size // 1024} KB as ucl_population_nsw.csv")
 
 
+def download_filipcikova_sa2(out_path: Path) -> None:
+    """Download Filipcikova et al. (2026) SA2 weighted travel times. CC BY."""
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    resp = requests.get(FILIPCIKOVA_SA2_URL, timeout=120, allow_redirects=True)
+    resp.raise_for_status()
+    out_path.write_bytes(resp.content)
+
+
 def _generate_checksums(data_dir: Path, checksum_file: Path) -> None:
     patterns = ["*.geojson", "*.gpkg", "*.shp", "*.csv"]
     lines = []
@@ -202,6 +214,7 @@ def main() -> None:
     download_gp_locations()
     download_dpa()
     download_population()
+    download_filipcikova_sa2(DATA_DIR / "health_access_sa2.csv")
 
     print()
     checksum_file = DATA_DIR / "checksums.sha256"
