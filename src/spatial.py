@@ -196,8 +196,6 @@ def build_spatial_context_sa2(
 
     Mode 2 builder lives in `build_spatial_context_sa2_prescriptive` (Task 9).
     """
-    from src.models import SpatialContext
-
     phn_access = access[access["PHN_NAME"] == params.region].copy()
     if phn_access.empty:
         raise ValueError(f"No SA2s found for PHN: {params.region}")
