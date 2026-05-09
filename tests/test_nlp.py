@@ -56,15 +56,17 @@ def test_parse_query_raises_on_non_tool_response(mock_client):
 
 
 @patch("src.nlp._client")
-def test_parse_query_raises_on_invalid_region(mock_client):
+def test_parse_query_accepts_any_region_without_fallback(mock_client):
+    """Region validation is delegated to schema enum; __post_init__ accepts any non-empty region."""
     mock_client.messages.create.return_value = _mock_tool_response({
         "mode": "diagnostic",
         "region": "Murrumbidgee PHN",
         "facility_type": "gp",
         "threshold_min": 45,
     })
-    with pytest.raises(ValidationError):
-        parse_query("Coverage in Murrumbidgee?")
+    # Should not raise — the schema enum is the gatekeeper
+    result = parse_query("Coverage in Murrumbidgee?")
+    assert result.region == "Murrumbidgee PHN"
 
 
 @patch("src.nlp._client")

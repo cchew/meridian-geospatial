@@ -66,8 +66,6 @@ def _phn_options() -> list[str]:
         phns = ["Western NSW"]
     if not phns:
         phns = ["Western NSW"]
-    # Expand ALLOWED_REGIONS to the full national list now that data is loaded
-    _models.ALLOWED_REGIONS[:] = phns
     return phns
 
 
