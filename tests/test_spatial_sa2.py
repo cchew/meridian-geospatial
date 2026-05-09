@@ -76,3 +76,24 @@ def test_diagnostic_mode_western_nsw_returns_demand(access, sa2):
     assert "gp_min" in ctx.demand_points.columns
     assert "population" in ctx.demand_points.columns
     assert ctx.demand_points["population"].sum() > 100_000
+
+
+def test_prescriptive_mode_western_nsw(access, sa2):
+    from src.models import QueryParams
+    from src.spatial import build_spatial_context_sa2_prescriptive, load_facility_layers
+
+    gp_locations, dpa, phn = load_facility_layers()
+    params = QueryParams(mode="prescriptive", region="Western NSW",
+                          facility_type="gp", threshold_min=45,
+                          k=2, pop_min=500)
+    ctx = build_spatial_context_sa2_prescriptive(
+        params, access, sa2, gp_locations, dpa, phn
+    )
+    assert len(ctx.demand_points) > 0
+    assert len(ctx.candidates) > 0
+    # Candidates restricted to PHN proper, even though coverage uses buffered set.
+    # union_all() and unary_union fail with shapely 2.0.4 + GEOS 3.11.
+    # PHN table has one row per PHN; extract the Shapely geometry directly.
+    western_phn = phn[phn["PHN_NAME"] == "Western NSW"].geometry.iloc[0]
+    for geom in ctx.candidates.geometry:
+        assert western_phn.buffer(0.001).contains(geom)
