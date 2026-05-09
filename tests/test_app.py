@@ -109,8 +109,12 @@ def mocked_pipeline():
         )),
         patch("src.spatial.load_sa2_access", return_value=pd.DataFrame()),
         patch("src.spatial.load_sa2_geometries", return_value=gpd.GeoDataFrame(geometry=[], crs="EPSG:4326")),
+        patch("src.spatial.load_facility_layers", return_value=(
+            _gp_locations(), _dpa(), _phn()
+        )),
         patch("src.spatial.build_spatial_context", return_value=_spatial_context()),
         patch("src.spatial.build_spatial_context_sa2", return_value=_spatial_context()),
+        patch("src.spatial.build_spatial_context_sa2_prescriptive", return_value=_spatial_context()),
         patch("src.optimiser.diagnose_sa2_coverage", return_value=(
             _sa2_demand_with_coverage(), _sa2_summary()
         )),
@@ -225,3 +229,75 @@ def test_diagnose_sa2_coverage_rejects_unknown_facility_type():
     )
     with pytest.raises(ValueError, match="unknown facility_type"):
         diagnose_sa2_coverage(demand, threshold_min=30, facility_type="bogus")
+
+
+def test_mode2_western_nsw_k2_returns_two_sites(monkeypatch):
+    """Mode 2 SA2 wiring: build_spatial_context_sa2_prescriptive + solve_mclp
+    returns 2 selected sites. Routing is monkeypatched to avoid ArcGIS API cost."""
+    from src.models import QueryParams, CoverageMatrix
+    from src.spatial import (
+        load_sa2_access,
+        load_sa2_geometries,
+        load_facility_layers,
+        build_spatial_context_sa2_prescriptive,
+    )
+    from src.optimiser import solve_mclp
+    import src.routing as routing
+
+    access = load_sa2_access()
+    sa2 = load_sa2_geometries()
+    gp, dpa, phn = load_facility_layers()
+    params = QueryParams(
+        mode="prescriptive",
+        region="Western NSW",
+        facility_type="gp",
+        threshold_min=45,
+        k=2,
+        pop_min=500,
+    )
+    ctx = build_spatial_context_sa2_prescriptive(params, access, sa2, gp, dpa, phn)
+
+    all_facilities = gpd.GeoDataFrame(
+        pd.concat([ctx.existing_facilities, ctx.candidates], ignore_index=True),
+        crs=ctx.existing_facilities.crs,
+    )
+
+    demand_ids = ctx.demand_points["demand_id"].astype(str).tolist()
+    # Preserve original facility_id values (existing: '0','1',...; candidates: 'c_0','c_1',...)
+    facility_ids = all_facilities["facility_id"].tolist()
+
+    # Build a synthetic travel-time matrix: first 2 candidates cover all demand
+    # within threshold; all others are out of range. Existing facilities are all
+    # out of range so before-coverage is zero and solve_mclp must select 2 sites.
+    import numpy as np
+
+    n_demand = len(demand_ids)
+    n_facilities = len(facility_ids)
+    matrix_data = np.full((n_demand, n_facilities), 999.0)
+
+    candidate_ids = ctx.candidates["facility_id"].tolist() if "facility_id" in ctx.candidates.columns else []
+    # Cover all demand via first 2 candidates
+    for col_idx, fid in enumerate(facility_ids):
+        if fid in candidate_ids[:2]:
+            matrix_data[:, col_idx] = 10.0  # well within 45-min threshold
+
+    synthetic_matrix = pd.DataFrame(matrix_data, index=demand_ids, columns=facility_ids)
+    synthetic_cm = CoverageMatrix(
+        matrix=synthetic_matrix,
+        demand_ids=demand_ids,
+        facility_ids=facility_ids,
+    )
+
+    monkeypatch.setattr(routing, "get_travel_time_matrix", lambda *a, **kw: synthetic_cm)
+
+    cm = routing.get_travel_time_matrix(ctx.demand_points, all_facilities, params.threshold_min)
+    result = solve_mclp(
+        ctx.demand_points,
+        ctx.candidates,
+        ctx.existing_facilities,
+        cm,
+        k=2,
+        threshold_min=45,
+    )
+    assert len(result.selected_sites) == 2
+    assert result.coverage_pct_after >= result.coverage_pct_before

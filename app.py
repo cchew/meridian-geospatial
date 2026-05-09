@@ -167,9 +167,19 @@ if analyse_clicked and user_input.strip():
         }
 
     else:
-        # ── Mode 2: Prescriptive — live routing via ArcGIS ────────────────────
-        with st.spinner("Preparing spatial data..."):
-            ctx = build_spatial_context(params, phn, localities, gp_locations, dpa)
+        # ── Mode 2: Prescriptive — SA2 demand + buffered facility set ─────────
+        with st.spinner("Preparing SA2 spatial data..."):
+            from src.spatial import (
+                load_facility_layers,
+                build_spatial_context_sa2_prescriptive,
+            )
+            from src.routing import get_travel_time_matrix
+            from src.optimiser import solve_mclp
+            import pandas as pd, geopandas as gpd
+
+            access, sa2 = _load_sa2_layers()
+            gp, dpa, phn = load_facility_layers()
+            ctx = build_spatial_context_sa2_prescriptive(params, access, sa2, gp, dpa, phn)
             phn_region = phn[phn["PHN_NAME"] == params.region]
 
         with st.spinner("Computing coverage (using cached travel times)..."):
