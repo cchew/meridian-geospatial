@@ -4,6 +4,7 @@ import geopandas as gpd
 import pandas as pd
 import plotly.graph_objects as go
 import pytest
+import sys
 from shapely.geometry import Point, Polygon
 from unittest.mock import patch, MagicMock
 from streamlit.testing.v1 import AppTest
@@ -314,3 +315,16 @@ def test_mode2_western_nsw_k2_returns_two_sites(monkeypatch):
     )
     assert len(result.selected_sites) == 2
     assert result.coverage_pct_after >= result.coverage_pct_before
+
+
+def test_all_phns_diagnostic_succeeds():
+    """Smoke test: Mode 1 (diagnostic) succeeds for all 31 PHNs."""
+    import subprocess
+    from pathlib import Path
+    repo = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [sys.executable, "scripts/smoke_all_phns.py"],
+        cwd=repo, capture_output=True, text=True, timeout=180,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+    assert "All 31 PHNs passed." in result.stdout
