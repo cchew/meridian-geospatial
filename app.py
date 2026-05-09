@@ -15,9 +15,9 @@ for key in ["ANTHROPIC_API_KEY", "ARCGIS_CLIENT_ID", "ARCGIS_CLIENT_SECRET"]:
         os.environ[key] = st.secrets[key]
 
 from src.models import QueryParams, ValidationError, ParseError, RoutingError, NarrativeContext
-from src.spatial import load_all_data, build_spatial_context
+from src.spatial import load_all_data, build_spatial_context, load_sa2_access, load_sa2_geometries, build_spatial_context_sa2
 from src.routing import get_travel_time_matrix
-from src.optimiser import solve_mclp, compute_coverage
+from src.optimiser import solve_mclp, compute_coverage, diagnose_sa2_coverage
 from src.nlp import parse_query, generate_narrative
 from src.visualisation import build_diagnostic_map, build_prescriptive_map
 
@@ -44,6 +44,11 @@ def _load_data():
     phn, localities, gp_locations, dpa = load_all_data()
     status.write("Spatial data loaded.")
     return phn, localities, gp_locations, dpa
+
+
+@st.cache_resource(show_spinner=False)
+def _load_sa2_layers():
+    return load_sa2_access(), load_sa2_geometries()
 
 
 # ── Header ──────────────────────────────────────────────────────────────────
@@ -113,103 +118,142 @@ if analyse_clicked and user_input.strip():
             error_placeholder.error(str(e))
             st.stop()
 
-    # 2. Build spatial context
-    with st.spinner("Preparing spatial data..."):
-        ctx = build_spatial_context(params, phn, localities, gp_locations, dpa)
-        phn_region = phn[phn["PHN_NAME"] == params.region]
+    if params.mode == "diagnostic":
+        # ── Mode 1: SA2 precomputed access — no live routing ──────────────────
+        with st.spinner("Preparing SA2 access data..."):
+            access, sa2 = _load_sa2_layers()
+            ctx = build_spatial_context_sa2(params, access, sa2)
 
-    # 3. Get travel time matrix
-    with st.spinner("Computing coverage (using cached travel times)..."):
-        try:
-            if params.mode == "prescriptive":
+        with st.spinner("Computing coverage from precomputed access..."):
+            demand, summary = diagnose_sa2_coverage(
+                ctx.demand_points, params.threshold_min, params.facility_type
+            )
+
+        covered_pop = summary["covered_population"]
+        total_pop = summary["total_population"]
+        pct = summary["coverage_pct"]
+        uncovered_towns = demand.loc[~demand["covered"], "locality_name"].tolist()
+
+        # Generate narrative
+        with st.spinner("Generating briefing summary..."):
+            narrative_ctx = NarrativeContext(
+                mode=params.mode,
+                region=params.region,
+                threshold_min=params.threshold_min,
+                covered_population=covered_pop,
+                total_population=total_pop,
+                coverage_pct=pct,
+                uncovered_towns=uncovered_towns[:10],
+            )
+            narrative = generate_narrative(narrative_ctx)
+
+        # Build map — demand already has `covered` column; no existing facilities layer
+        empty_facilities = gpd.GeoDataFrame(geometry=[], crs="EPSG:4326")
+        folium_map = build_diagnostic_map(
+            demand, empty_facilities, params.threshold_min,
+            phn_boundary=None,
+        )
+
+        st.session_state["results"] = {
+            "folium_map": folium_map,
+            "mode": params.mode,
+            "total_pop": total_pop,
+            "covered_pop": covered_pop,
+            "pct": pct,
+            "threshold_min": params.threshold_min,
+            "opt_result": None,
+            "narrative": narrative,
+            "sa2_summary": summary,
+        }
+
+    else:
+        # ── Mode 2: Prescriptive — live routing via ArcGIS ────────────────────
+        with st.spinner("Preparing spatial data..."):
+            ctx = build_spatial_context(params, phn, localities, gp_locations, dpa)
+            phn_region = phn[phn["PHN_NAME"] == params.region]
+
+        with st.spinner("Computing coverage (using cached travel times)..."):
+            try:
                 all_facilities = gpd.GeoDataFrame(
                     pd.concat([ctx.existing_facilities, ctx.candidates], ignore_index=True),
                     crs=ctx.existing_facilities.crs,
                 )
                 cm = get_travel_time_matrix(ctx.demand_points, all_facilities, params.threshold_min)
-            else:
-                cm = get_travel_time_matrix(ctx.demand_points, ctx.existing_facilities, params.threshold_min)
-        except RoutingError as e:
-            error_placeholder.error(
-                "Could not compute travel times. Please check your ArcGIS credentials."
+            except RoutingError:
+                error_placeholder.error(
+                    "Could not compute travel times. Please check your ArcGIS credentials."
+                )
+                st.stop()
+
+        opt_result = None
+        if params.k:
+            with st.spinner(f"Finding optimal {params.k} clinic locations..."):
+                opt_result = solve_mclp(
+                    ctx.demand_points, ctx.candidates, ctx.existing_facilities,
+                    cm, k=params.k, threshold_min=params.threshold_min,
+                )
+
+        existing_ids = ctx.existing_facilities["facility_id"].tolist() if "facility_id" in ctx.existing_facilities.columns else []
+        covered_pop, pct = compute_coverage(ctx.demand_points, existing_ids, cm.matrix, params.threshold_min)
+        total_pop = int(ctx.demand_points["population"].sum())
+
+        uncovered_mask = ctx.demand_points.apply(
+            lambda row: (
+                cm.matrix.loc[row["demand_id"], existing_ids].min() > params.threshold_min
+                if row.get("demand_id") in cm.matrix.index and existing_ids else True
+            ),
+            axis=1,
+        )
+        uncovered_towns = ctx.demand_points[uncovered_mask]["locality_name"].tolist()
+
+        with st.spinner("Generating briefing summary..."):
+            narrative_ctx = NarrativeContext(
+                mode=params.mode,
+                region=params.region,
+                threshold_min=params.threshold_min,
+                covered_population=covered_pop,
+                total_population=total_pop,
+                coverage_pct=pct,
+                uncovered_towns=uncovered_towns[:10],
+                proposed_sites=opt_result.selected_sites["locality_name"].tolist() if opt_result is not None and "locality_name" in opt_result.selected_sites.columns else None,
+                covered_before=opt_result.covered_before if opt_result else None,
+                covered_after=opt_result.covered_after if opt_result else None,
+                coverage_pct_before=opt_result.coverage_pct_before if opt_result else None,
+                coverage_pct_after=opt_result.coverage_pct_after if opt_result else None,
+                k=params.k,
             )
-            st.stop()
+            narrative = generate_narrative(narrative_ctx)
 
-    # 4. Run solver (Mode 2 only)
-    opt_result = None
-    if params.mode == "prescriptive" and params.k:
-        with st.spinner(f"Finding optimal {params.k} clinic locations..."):
-            opt_result = solve_mclp(
-                ctx.demand_points, ctx.candidates, ctx.existing_facilities,
-                cm, k=params.k, threshold_min=params.threshold_min,
+        ctx.demand_points["covered"] = ctx.demand_points.apply(
+            lambda row: (
+                cm.matrix.loc[row["demand_id"], existing_ids].min() <= params.threshold_min
+                if row.get("demand_id") in cm.matrix.index and existing_ids else False
+            ),
+            axis=1,
+        )
+
+        if opt_result is not None:
+            folium_map = build_prescriptive_map(
+                ctx.demand_points, ctx.existing_facilities,
+                opt_result.selected_sites, params.threshold_min,
+                phn_boundary=phn_region,
+            )
+        else:
+            folium_map = build_diagnostic_map(
+                ctx.demand_points, ctx.existing_facilities, params.threshold_min,
+                phn_boundary=phn_region,
             )
 
-    # 5. Compute coverage for diagnostic
-    existing_ids = ctx.existing_facilities["facility_id"].tolist() if "facility_id" in ctx.existing_facilities.columns else []
-    covered_pop, pct = compute_coverage(ctx.demand_points, existing_ids, cm.matrix, params.threshold_min)
-    total_pop = int(ctx.demand_points["population"].sum())
-
-    uncovered_mask = ctx.demand_points.apply(
-        lambda row: (
-            cm.matrix.loc[row["demand_id"], existing_ids].min() > params.threshold_min
-            if row.get("demand_id") in cm.matrix.index and existing_ids else True
-        ),
-        axis=1,
-    )
-    uncovered_towns = ctx.demand_points[uncovered_mask]["locality_name"].tolist()
-
-    # 6. Generate narrative
-    with st.spinner("Generating briefing summary..."):
-        narrative_ctx = NarrativeContext(
-            mode=params.mode,
-            region=params.region,
-            threshold_min=params.threshold_min,
-            covered_population=covered_pop,
-            total_population=total_pop,
-            coverage_pct=pct,
-            uncovered_towns=uncovered_towns[:10],
-            proposed_sites=opt_result.selected_sites["locality_name"].tolist() if opt_result is not None and "locality_name" in opt_result.selected_sites.columns else None,
-            covered_before=opt_result.covered_before if opt_result else None,
-            covered_after=opt_result.covered_after if opt_result else None,
-            coverage_pct_before=opt_result.coverage_pct_before if opt_result else None,
-            coverage_pct_after=opt_result.coverage_pct_after if opt_result else None,
-            k=params.k,
-        )
-        narrative = generate_narrative(narrative_ctx)
-
-    # 7. Add coverage flag to demand points
-    ctx.demand_points["covered"] = ctx.demand_points.apply(
-        lambda row: (
-            cm.matrix.loc[row["demand_id"], existing_ids].min() <= params.threshold_min
-            if row.get("demand_id") in cm.matrix.index and existing_ids else False
-        ),
-        axis=1,
-    )
-
-    # 8. Build map
-    if params.mode == "prescriptive" and opt_result is not None:
-        folium_map = build_prescriptive_map(
-            ctx.demand_points, ctx.existing_facilities,
-            opt_result.selected_sites, params.threshold_min,
-            phn_boundary=phn_region,
-        )
-    else:
-        folium_map = build_diagnostic_map(
-            ctx.demand_points, ctx.existing_facilities, params.threshold_min,
-            phn_boundary=phn_region,
-        )
-
-    # 9. Store results in session state
-    st.session_state["results"] = {
-        "folium_map": folium_map,
-        "mode": params.mode,
-        "total_pop": total_pop,
-        "covered_pop": covered_pop,
-        "pct": pct,
-        "threshold_min": params.threshold_min,
-        "opt_result": opt_result,
-        "narrative": narrative,
-    }
+        st.session_state["results"] = {
+            "folium_map": folium_map,
+            "mode": params.mode,
+            "total_pop": total_pop,
+            "covered_pop": covered_pop,
+            "pct": pct,
+            "threshold_min": params.threshold_min,
+            "opt_result": opt_result,
+            "narrative": narrative,
+        }
 
 elif analyse_clicked and not user_input.strip():
     st.warning("Please enter a question before clicking Analyse.")

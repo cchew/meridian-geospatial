@@ -7,6 +7,33 @@ from pulp import LpProblem, LpVariable, LpMaximize, lpSum, value, PULP_CBC_CMD
 from src.models import CoverageMatrix, OptimisationResult
 
 
+def diagnose_sa2_coverage(
+    demand: gpd.GeoDataFrame,
+    threshold_min: int,
+    facility_type: str = "gp",
+) -> tuple[gpd.GeoDataFrame, dict]:
+    """Mode 1 diagnostic: reads precomputed access from Filipcikova.
+
+    Returns (demand with `covered` column, summary dict).
+    """
+    col = "gp_min" if facility_type == "gp" else "gp_bulk_billing_min"
+    if col not in demand.columns:
+        raise ValueError(f"demand missing column {col}; run load_sa2_access first")
+
+    demand = demand.copy()
+    demand["covered"] = demand[col] <= threshold_min
+    total_pop = int(demand["population"].sum())
+    covered_pop = int(demand.loc[demand["covered"], "population"].sum())
+    summary = {
+        "total_population": total_pop,
+        "covered_population": covered_pop,
+        "coverage_pct": round(covered_pop / total_pop * 100, 2) if total_pop else 0.0,
+        "uncovered_sa2_count": int((~demand["covered"]).sum()),
+        "median_travel_min": round(float(demand[col].median()), 2),
+    }
+    return demand, summary
+
+
 def compute_coverage(
     demand: gpd.GeoDataFrame,
     facility_ids: list[str],

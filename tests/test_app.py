@@ -15,6 +15,9 @@ from src.models import (
     NarrativeContext,
 )
 
+# Synthetic SA2 population for mock: 3 SA2s totalling 10000
+_SA2_TOTAL_POP = 10000
+
 APP_PATH = "app.py"
 TIMEOUT = 30
 
@@ -78,6 +81,24 @@ def _coverage_matrix() -> CoverageMatrix:
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
 
+def _sa2_summary():
+    return {
+        "total_population": _SA2_TOTAL_POP,
+        "covered_population": 5000,
+        "coverage_pct": 50.0,
+        "uncovered_sa2_count": 2,
+        "median_travel_min": 30.0,
+    }
+
+
+def _sa2_demand_with_coverage() -> gpd.GeoDataFrame:
+    demand = _spatial_context().demand_points.copy()
+    demand["covered"] = [True, False, False]
+    demand["gp_min"] = [10.0, 60.0, 90.0]
+    demand["gp_bulk_billing_min"] = [10.0, 60.0, 90.0]
+    return demand
+
+
 @pytest.fixture
 def mocked_pipeline():
     """Patch all external dependencies so AppTest runs without real data or APIs."""
@@ -86,7 +107,13 @@ def mocked_pipeline():
         patch("src.spatial.load_all_data", return_value=(
             _phn(), _localities(), _gp_locations(), _dpa()
         )),
+        patch("src.spatial.load_sa2_access", return_value=pd.DataFrame()),
+        patch("src.spatial.load_sa2_geometries", return_value=gpd.GeoDataFrame(geometry=[], crs="EPSG:4326")),
         patch("src.spatial.build_spatial_context", return_value=_spatial_context()),
+        patch("src.spatial.build_spatial_context_sa2", return_value=_spatial_context()),
+        patch("src.optimiser.diagnose_sa2_coverage", return_value=(
+            _sa2_demand_with_coverage(), _sa2_summary()
+        )),
         patch("src.routing.get_travel_time_matrix", return_value=_coverage_matrix()),
         patch("src.nlp.parse_query", return_value=QueryParams(
             mode="diagnostic", region="Western NSW", facility_type="gp",
@@ -153,7 +180,7 @@ def test_diagnostic_analysis_renders_results(mocked_pipeline):
     analyse_btn.click().run()
     assert "results" in at.session_state
     assert at.session_state["results"]["narrative"] != ""
-    assert at.session_state["results"]["total_pop"] == 10000  # 5000+3000+2000
+    assert at.session_state["results"]["total_pop"] == _SA2_TOTAL_POP  # from mocked SA2 summary
 
 
 def test_switching_modes_clears_results(mocked_pipeline):
@@ -165,3 +192,24 @@ def test_switching_modes_clears_results(mocked_pipeline):
     assert "results" in at.session_state
     at.radio[0].set_value("prescriptive").run()
     assert "results" not in at.session_state
+
+
+def test_mode1_western_nsw_no_routing_calls(monkeypatch):
+    """Mode 1 must not invoke ArcGIS or ORS."""
+    from unittest.mock import MagicMock
+    import src.routing as routing
+    spy = MagicMock(side_effect=AssertionError("Mode 1 should not call routing"))
+    monkeypatch.setattr(routing, "get_travel_time_matrix", spy)
+
+    from src.spatial import load_sa2_access, load_sa2_geometries, build_spatial_context_sa2
+    from src.optimiser import diagnose_sa2_coverage
+    from src.models import QueryParams
+
+    params = QueryParams(mode="diagnostic", region="Western NSW",
+                          facility_type="gp_bulk_billing", threshold_min=45)
+    ctx = build_spatial_context_sa2(params, load_sa2_access(), load_sa2_geometries())
+    demand_with_cov, summary = diagnose_sa2_coverage(
+        ctx.demand_points, params.threshold_min, params.facility_type
+    )
+    assert summary["uncovered_sa2_count"] >= 10  # 10 pinned for Western NSW PHN (38 is NSW state total)
+    spy.assert_not_called()
