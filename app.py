@@ -15,7 +15,7 @@ for key in ["ANTHROPIC_API_KEY", "ARCGIS_CLIENT_ID", "ARCGIS_CLIENT_SECRET"]:
         os.environ[key] = st.secrets[key]
 
 from src.models import QueryParams, ValidationError, ParseError, RoutingError, NarrativeContext
-from src.spatial import load_all_data, build_spatial_context, load_sa2_access, load_sa2_geometries, build_spatial_context_sa2
+from src.spatial import load_all_data, build_spatial_context, load_sa2_access, load_sa2_geometries, build_spatial_context_sa2, load_facility_layers, build_spatial_context_sa2_prescriptive
 from src.routing import get_travel_time_matrix
 from src.optimiser import solve_mclp, compute_coverage, diagnose_sa2_coverage
 from src.nlp import parse_query, generate_narrative
@@ -169,14 +169,6 @@ if analyse_clicked and user_input.strip():
     else:
         # ── Mode 2: Prescriptive — SA2 demand + buffered facility set ─────────
         with st.spinner("Preparing SA2 spatial data..."):
-            from src.spatial import (
-                load_facility_layers,
-                build_spatial_context_sa2_prescriptive,
-            )
-            from src.routing import get_travel_time_matrix
-            from src.optimiser import solve_mclp
-            import pandas as pd, geopandas as gpd
-
             access, sa2 = _load_sa2_layers()
             gp, dpa, phn = load_facility_layers()
             ctx = build_spatial_context_sa2_prescriptive(params, access, sa2, gp, dpa, phn)
