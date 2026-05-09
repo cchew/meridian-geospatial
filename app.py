@@ -16,7 +16,7 @@ for key in ["ANTHROPIC_API_KEY", "ARCGIS_CLIENT_ID", "ARCGIS_CLIENT_SECRET"]:
 
 import src.models as _models
 from src.models import QueryParams, ValidationError, ParseError, RoutingError, NarrativeContext
-from src.spatial import load_all_data, build_spatial_context, load_sa2_access, load_sa2_geometries, build_spatial_context_sa2, load_facility_layers, build_spatial_context_sa2_prescriptive, list_phns
+from src.spatial import load_sa2_access, load_sa2_geometries, build_spatial_context_sa2, load_facility_layers, build_spatial_context_sa2_prescriptive, list_phns
 from src.routing import get_travel_time_matrix
 from src.optimiser import solve_mclp, compute_coverage, diagnose_sa2_coverage
 from src.nlp import parse_query, generate_narrative, build_tool_schema
@@ -41,15 +41,6 @@ DEMO_QUERY_TEMPLATES = {
 def demo_queries(phn: str, mode: str) -> list[str]:
     """Return demo query strings with the given PHN name substituted in."""
     return [t.format(phn=phn) for t in DEMO_QUERY_TEMPLATES[mode]]
-
-
-@st.cache_resource(show_spinner=False)
-def _load_data():
-    status = st.empty()
-    status.write("Loading PHN boundaries...")
-    phn, localities, gp_locations, dpa = load_all_data()
-    status.write("Spatial data loaded.")
-    return phn, localities, gp_locations, dpa
 
 
 @st.cache_resource(show_spinner=False)
@@ -107,14 +98,6 @@ user_input = st.text_area(
     label_visibility="collapsed",
 )
 analyse_clicked = st.button("Analyse", type="primary")
-
-# ── Load spatial data (cold start) ──────────────────────────────────────────
-with st.spinner("Loading spatial data..."):
-    try:
-        phn, localities, gp_locations, dpa = _load_data()
-    except Exception as e:
-        st.error(f"Failed to load spatial data: {e}")
-        st.stop()
 
 # ── Main logic ──────────────────────────────────────────────────────────────
 if analyse_clicked and user_input.strip():
