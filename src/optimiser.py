@@ -7,6 +7,12 @@ from pulp import LpProblem, LpVariable, LpMaximize, lpSum, value, PULP_CBC_CMD
 from src.models import CoverageMatrix, OptimisationResult
 
 
+FACILITY_COLUMN = {
+    "gp": "gp_min",
+    "gp_bulk_billing": "gp_bulk_billing_min",
+}
+
+
 def diagnose_sa2_coverage(
     demand: gpd.GeoDataFrame,
     threshold_min: int,
@@ -16,7 +22,11 @@ def diagnose_sa2_coverage(
 
     Returns (demand with `covered` column, summary dict).
     """
-    col = "gp_min" if facility_type == "gp" else "gp_bulk_billing_min"
+    if facility_type not in FACILITY_COLUMN:
+        raise ValueError(
+            f"unknown facility_type {facility_type!r}; expected one of {sorted(FACILITY_COLUMN)}"
+        )
+    col = FACILITY_COLUMN[facility_type]
     if col not in demand.columns:
         raise ValueError(f"demand missing column {col}; run load_sa2_access first")
 

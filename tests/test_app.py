@@ -211,5 +211,17 @@ def test_mode1_western_nsw_no_routing_calls(monkeypatch):
     demand_with_cov, summary = diagnose_sa2_coverage(
         ctx.demand_points, params.threshold_min, params.facility_type
     )
-    assert summary["uncovered_sa2_count"] >= 10  # 10 pinned for Western NSW PHN (38 is NSW state total)
+    assert summary["uncovered_sa2_count"] == 10  # Western NSW PHN regression anchor
     spy.assert_not_called()
+
+
+def test_diagnose_sa2_coverage_rejects_unknown_facility_type():
+    """Validate that unknown facility_type raises ValueError."""
+    from src.optimiser import diagnose_sa2_coverage
+    demand = gpd.GeoDataFrame(
+        {"gp_min": [10.0], "gp_bulk_billing_min": [20.0], "population": [1000]},
+        geometry=[Point(0, 0)],
+        crs="EPSG:4326",
+    )
+    with pytest.raises(ValueError, match="unknown facility_type"):
+        diagnose_sa2_coverage(demand, threshold_min=30, facility_type="bogus")
