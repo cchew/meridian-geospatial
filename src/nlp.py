@@ -108,9 +108,8 @@ def parse_query(
         user_input: Raw natural-language query from the user.
         tool_schema: Pre-built tool schema (e.g. with a live PHN enum). When
                      None the module-level ``_PARSE_TOOL`` static schema is used.
-        fallback_region: PHN name to use when the LLM returns a region that is
-                         not in ALLOWED_REGIONS. Typically the currently selected
-                         PHN from the app's selectbox.
+        fallback_region: PHN name to use as default when the LLM does not return
+                         a region. Typically the currently selected PHN from the app's selectbox.
     """
     if len(user_input) > MAX_INPUT_CHARS:
         raise ValueError(f"Input exceeds {MAX_INPUT_CHARS} characters")
@@ -136,12 +135,6 @@ def parse_query(
 
     raw = tool_use.input
     region = raw.get("region", fallback_region or "Western NSW")
-
-    # If the LLM returned a region not in ALLOWED_REGIONS and a fallback is
-    # available, substitute silently rather than raising ValidationError.
-    from src.models import ALLOWED_REGIONS
-    if region not in ALLOWED_REGIONS and fallback_region is not None:
-        region = fallback_region
 
     return QueryParams(
         mode=raw["mode"],

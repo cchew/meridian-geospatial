@@ -119,22 +119,16 @@ def test_build_tool_schema_region_enum_has_provided_phns():
 
 
 @patch("src.nlp._client")
-def test_parse_query_fallback_region_used_on_invalid_phn(mock_client):
-    """When LLM returns an unrecognised PHN, fallback_region is substituted."""
-    import src.models as m
-    original = list(m.ALLOWED_REGIONS)
-    m.ALLOWED_REGIONS[:] = ["Western NSW", "Murrumbidgee"]
-    try:
-        mock_client.messages.create.return_value = _mock_tool_response({
-            "mode": "diagnostic",
-            "region": "Unknown PHN XYZ",
-            "facility_type": "gp",
-            "threshold_min": 45,
-        })
-        result = parse_query(
-            "Coverage gaps?",
-            fallback_region="Western NSW",
-        )
-        assert result.region == "Western NSW"
-    finally:
-        m.ALLOWED_REGIONS[:] = original
+def test_parse_query_fallback_region_used_when_missing(mock_client):
+    """When LLM does not return a region, fallback_region is used."""
+    mock_client.messages.create.return_value = _mock_tool_response({
+        "mode": "diagnostic",
+        # region intentionally missing
+        "facility_type": "gp",
+        "threshold_min": 45,
+    })
+    result = parse_query(
+        "Coverage gaps?",
+        fallback_region="Western NSW",
+    )
+    assert result.region == "Western NSW"
