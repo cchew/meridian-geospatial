@@ -109,6 +109,7 @@ def mocked_pipeline():
         )),
         patch("src.spatial.load_sa2_access", return_value=pd.DataFrame()),
         patch("src.spatial.load_sa2_geometries", return_value=gpd.GeoDataFrame(geometry=[], crs="EPSG:4326")),
+        patch("src.spatial.list_phns", return_value=["Western NSW"]),
         patch("src.spatial.load_facility_layers", return_value=(
             _gp_locations(), _dpa(), _phn()
         )),
@@ -217,6 +218,18 @@ def test_mode1_western_nsw_no_routing_calls(monkeypatch):
     )
     assert summary["uncovered_sa2_count"] == 10  # Western NSW PHN regression anchor
     spy.assert_not_called()
+
+
+def test_demo_queries_substitutes_phn_name():
+    """demo_queries must substitute the PHN name into all templates for both modes."""
+    from app import demo_queries
+    phn = "Murray PHN"
+    diag = demo_queries(phn, "diagnostic")
+    presc = demo_queries(phn, "prescriptive")
+    assert all(phn in q for q in diag)
+    assert all(phn in q for q in presc)
+    assert len(diag) == 1
+    assert len(presc) == 2
 
 
 def test_diagnose_sa2_coverage_rejects_unknown_facility_type():

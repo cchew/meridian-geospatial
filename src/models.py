@@ -6,7 +6,7 @@ import geopandas as gpd
 import pandas as pd
 
 
-ALLOWED_REGIONS = ["Western NSW"]
+ALLOWED_REGIONS: list[str] = ["Western NSW"]
 
 
 class ValidationError(ValueError):

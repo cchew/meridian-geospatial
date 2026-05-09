@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.models import ParseError, QueryParams, NarrativeContext, ValidationError
-from src.nlp import parse_query, generate_narrative
+from src.nlp import parse_query, generate_narrative, build_tool_schema
 
 
 def _mock_tool_response(tool_input: dict):
@@ -105,3 +105,34 @@ def test_generate_narrative_raw_user_text_never_sent(mock_client):
     # The user message should be structured data only — no free text from the UI
     for msg in messages:
         assert "ignore previous" not in str(msg).lower()
+
+
+def test_build_tool_schema_region_enum_has_provided_phns():
+    """build_tool_schema must embed the supplied PHN list as the region enum."""
+    regions = [f"PHN {i}" for i in range(31)]
+    schema = build_tool_schema(regions)
+    region_enum = schema["input_schema"]["properties"]["region"]["enum"]
+    assert region_enum == regions
+    assert len(region_enum) == 31
+
+
+@patch("src.nlp._client")
+def test_parse_query_fallback_region_used_on_invalid_phn(mock_client):
+    """When LLM returns an unrecognised PHN, fallback_region is substituted."""
+    import src.models as m
+    original = list(m.ALLOWED_REGIONS)
+    m.ALLOWED_REGIONS[:] = ["Western NSW", "Murrumbidgee"]
+    try:
+        mock_client.messages.create.return_value = _mock_tool_response({
+            "mode": "diagnostic",
+            "region": "Unknown PHN XYZ",
+            "facility_type": "gp",
+            "threshold_min": 45,
+        })
+        result = parse_query(
+            "Coverage gaps?",
+            fallback_region="Western NSW",
+        )
+        assert result.region == "Western NSW"
+    finally:
+        m.ALLOWED_REGIONS[:] = original

@@ -14,11 +14,12 @@ for key in ["ANTHROPIC_API_KEY", "ARCGIS_CLIENT_ID", "ARCGIS_CLIENT_SECRET"]:
     if key not in os.environ and hasattr(st, "secrets") and key in st.secrets:
         os.environ[key] = st.secrets[key]
 
+import src.models as _models
 from src.models import QueryParams, ValidationError, ParseError, RoutingError, NarrativeContext
-from src.spatial import load_all_data, build_spatial_context, load_sa2_access, load_sa2_geometries, build_spatial_context_sa2, load_facility_layers, build_spatial_context_sa2_prescriptive
+from src.spatial import load_all_data, build_spatial_context, load_sa2_access, load_sa2_geometries, build_spatial_context_sa2, load_facility_layers, build_spatial_context_sa2_prescriptive, list_phns
 from src.routing import get_travel_time_matrix
 from src.optimiser import solve_mclp, compute_coverage, diagnose_sa2_coverage
-from src.nlp import parse_query, generate_narrative
+from src.nlp import parse_query, generate_narrative, build_tool_schema
 from src.visualisation import build_diagnostic_map, build_prescriptive_map
 
 st.set_page_config(
@@ -26,15 +27,20 @@ st.set_page_config(
     layout="wide",
 )
 
-DEMO_QUERIES = {
+DEMO_QUERY_TEMPLATES = {
     "diagnostic": [
-        "Which towns in Western NSW with more than 500 people are more than 45 minutes from the nearest bulk-billing GP?",
+        "Which towns in {phn} with more than 500 people are more than 45 minutes from the nearest bulk-billing GP?",
     ],
     "prescriptive": [
-        "Where would you place 6 new GP clinics in Western NSW to maximise population coverage within 45 minutes?",
-        "Where should the next 2 GP clinics go in Western NSW within 45 minutes, after Ochre Health's 6 recent openings?",
+        "Where would you place 6 new GP clinics in {phn} to maximise population coverage within 45 minutes?",
+        "Where should the next 2 GP clinics go in {phn} within 45 minutes, after Ochre Health's 6 recent openings?",
     ],
 }
+
+
+def demo_queries(phn: str, mode: str) -> list[str]:
+    """Return demo query strings with the given PHN name substituted in."""
+    return [t.format(phn=phn) for t in DEMO_QUERY_TEMPLATES[mode]]
 
 
 @st.cache_resource(show_spinner=False)
@@ -51,9 +57,27 @@ def _load_sa2_layers():
     return load_sa2_access(), load_sa2_geometries()
 
 
+@st.cache_resource(show_spinner=False)
+def _phn_options() -> list[str]:
+    access, _ = _load_sa2_layers()
+    try:
+        phns = list_phns(access)
+    except (KeyError, Exception):
+        phns = ["Western NSW"]
+    if not phns:
+        phns = ["Western NSW"]
+    # Expand ALLOWED_REGIONS to the full national list now that data is loaded
+    _models.ALLOWED_REGIONS[:] = phns
+    return phns
+
+
 # ── Header ──────────────────────────────────────────────────────────────────
 st.title("Meridian — Health Coverage Intelligence")
-st.caption("Western NSW PHN · AI-powered spatial decision support")
+
+phn_names = _phn_options()
+default_idx = phn_names.index("Western NSW") if "Western NSW" in phn_names else 0
+selected_phn = st.selectbox("Select PHN", options=phn_names, index=default_idx)
+st.caption(f"PHN: {selected_phn} · AI-powered spatial decision support")
 
 # ── Mode toggle ─────────────────────────────────────────────────────────────
 mode = st.radio(
@@ -72,7 +96,7 @@ if st.session_state.get("_last_mode") != mode:
 
 # ── Suggested queries ────────────────────────────────────────────────────────
 st.caption("Try a suggested query:")
-for query in DEMO_QUERIES[mode]:
+for query in demo_queries(selected_phn, mode):
     if st.button(query, key=f"btn_{hash(query)}"):
         st.session_state["user_input"] = query
 
@@ -101,7 +125,12 @@ if analyse_clicked and user_input.strip():
     # 1. Parse NL query
     with st.spinner("Parsing your question..."):
         try:
-            params = parse_query(user_input)
+            _tool_schema = build_tool_schema(phn_names)
+            params = parse_query(
+                user_input,
+                tool_schema=_tool_schema,
+                fallback_region=selected_phn,
+            )
         except ParseError as e:
             error_placeholder.error(
                 "Could not interpret your question. "
@@ -109,10 +138,7 @@ if analyse_clicked and user_input.strip():
             )
             st.stop()
         except ValidationError as e:
-            error_placeholder.error(
-                "This demo is scoped to Western NSW PHN. "
-                "Support for additional PHNs is in development."
-            )
+            error_placeholder.error(str(e))
             st.stop()
         except ValueError as e:
             error_placeholder.error(str(e))
