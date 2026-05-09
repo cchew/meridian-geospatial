@@ -1,4 +1,5 @@
 # tests/test_validation.py — new file
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -17,6 +18,10 @@ def test_validate_script_runs_and_writes_output():
     assert out.exists()
     body = out.read_text()
     # Regression on the 2026-05-08 numbers
-    assert "Wilcannia" in body
-    assert "120" in body  # ArcGIS Wilcannia
-    assert "63" in body   # Filipcikova Wilcannia (rounded)
+    # Find the Wilcannia (L) row in the markdown table and verify the regression anchor values appear in it
+    m = re.search(r"\| Wilcannia[^|]*\|[^|]*\|[^|]*\|\s*(\d+\.\d+)\s*\|\s*(\d+\.\d+)\s*\|", body)
+    assert m, "Wilcannia row not found in validation output"
+    arcgis_min = float(m.group(1))
+    fil_min = float(m.group(2))
+    assert 115 <= arcgis_min <= 125, f"ArcGIS Wilcannia expected ~120 min, got {arcgis_min}"
+    assert 60 <= fil_min <= 66, f"Filipcikova Wilcannia expected ~63 min, got {fil_min}"

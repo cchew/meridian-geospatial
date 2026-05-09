@@ -110,6 +110,12 @@ def main() -> None:
 
     matched = joined.dropna(subset=["arcgis_min_to_gp", "fil_gp_min"])
 
+    if matched.empty:
+        sys.exit(
+            "No demand points matched after Filipcikova join. "
+            "Check matrix index dtype against demand_id (likely str vs int)."
+        )
+
     OUT.parent.mkdir(parents=True, exist_ok=True)
     with OUT.open("w") as f:
         f.write("# UCL/ArcGIS vs SA2/Filipcikova — Western NSW PHN\n\n")
