@@ -7,6 +7,11 @@ from src.models import QueryParams, SpatialContext
 
 DATA_DIR = Path("data")
 
+# Concordance uses "Australian Capital Territory"; boundary file uses "ACT"
+_PHN_BOUNDARY_ALIASES: dict[str, str] = {
+    "Australian Capital Territory": "ACT",
+}
+
 
 def load_sa2_access() -> pd.DataFrame:
     """Filipcikova SA2 access table joined to PHN concordance.
@@ -94,7 +99,8 @@ def build_spatial_context_sa2_prescriptive(
     demand = demand.copy()
     demand["geometry"] = demand.geometry.to_crs(epsg=7855).centroid.to_crs(epsg=4326)
 
-    phn_boundary = phn[phn["PHN_NAME"] == params.region]
+    boundary_name = _PHN_BOUNDARY_ALIASES.get(params.region, params.region)
+    phn_boundary = phn[phn["PHN_NAME"] == boundary_name]
     if phn_boundary.empty:
         raise ValueError(f"No PHN boundary for {params.region}")
 
