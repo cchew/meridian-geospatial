@@ -1,0 +1,154 @@
+"""Reproduces the 2026-05-08 cross-validation between the UCL/ArcGIS demo
+and the SA2/Filipcikova national dataset for Western NSW PHN.
+
+Note: gpd.clip is broken in this environment (shapely 2.0.4 + GEOS 3.11
+union_all incompatibility). Demand reconstruction uses sindex + intersection,
+which produces the same row ordering and demand points as the original clip-based
+build_spatial_context run that generated the cached matrices.
+"""
+from __future__ import annotations
+from pathlib import Path
+import sys
+
+import geopandas as gpd
+import pandas as pd
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from src.spatial import load_sa2_access
+
+DATA_DIR = Path("data")
+CACHE_DIR = Path("cache")
+OUT = Path("docs/figures/validation-output.md")
+
+# Hardcoded cache key for the Western NSW diagnostic (pop_min=500, threshold=45min)
+# matrix — the only 46-row parquet in cache/. Precomputed by scripts/precompute_matrix.py.
+_DIAGNOSTIC_CACHE_KEY = "cb894c00029d88bc"
+
+
+def _load_demand() -> gpd.GeoDataFrame:
+    """Reconstruct the 46 UCL demand points for Western NSW PHN (pop >= 500).
+
+    Replicates the original build_spatial_context logic but uses sindex + intersection
+    instead of gpd.clip (which fails with shapely 2.0.4 + GEOS 3.11 union_all).
+    Row ordering is identical to the cached ArcGIS matrix.
+    """
+    # Load UCL localities and population
+    localities = gpd.read_file(DATA_DIR / "localities.gpkg", layer="UCL_2021_AUST_GDA2020")
+    localities = localities.to_crs(epsg=4326)
+
+    pop = pd.read_csv(
+        DATA_DIR / "ucl_population_nsw.csv",
+        usecols=["UCL_CODE_2021", "Tot_P_P"],
+        dtype=str,
+    )
+    pop["UCL_CODE_2021"] = pop["UCL_CODE_2021"].str.removeprefix("UCL")
+    pop["Tot_P_P"] = pd.to_numeric(pop["Tot_P_P"], errors="coerce").fillna(0).astype(int)
+    pop = pop.rename(columns={"Tot_P_P": "population"})
+    localities = localities.merge(pop, on="UCL_CODE_2021", how="left")
+    localities["population"] = localities["population"].fillna(0).astype(int)
+    localities["locality_name"] = localities["UCL_NAME_2021"]
+
+    # Load Western NSW PHN boundary
+    phn = gpd.read_file(DATA_DIR / "phn_boundaries.geojson").to_crs(epsg=4326)
+    western_geom = phn[phn["PHN_NAME"] == "Western NSW"].geometry.iloc[0]
+
+    # Spatial filter via sindex (equivalent to clip's intersects step)
+    idx = localities.sindex.query(western_geom, predicate="intersects")
+    demand = localities.iloc[idx].copy()
+    demand = demand[~demand["UCL_NAME_2021"].str.startswith("Remainder of")]
+    demand = demand[demand["population"] >= 500].copy()
+
+    # Clip individual geometries to PHN boundary (same as gpd.clip would do)
+    demand["geometry"] = demand.geometry.intersection(western_geom)
+    demand = demand[~demand.geometry.is_empty].reset_index(drop=True)
+
+    # Convert to centroids for routing (same as build_spatial_context)
+    demand["geometry"] = demand.geometry.to_crs(epsg=7855).centroid.to_crs(epsg=4326)
+    demand["demand_id"] = demand.index.astype(str)
+    return demand
+
+
+def main() -> None:
+    cache_path = CACHE_DIR / f"{_DIAGNOSTIC_CACHE_KEY}.parquet"
+    if not cache_path.exists():
+        sys.exit(
+            f"Cached UCL/ArcGIS matrix missing: {cache_path}. "
+            "Run scripts/precompute_matrix.py against the legacy UCL data first."
+        )
+
+    # Load UCL/ArcGIS travel time matrix
+    matrix = pd.read_parquet(cache_path)
+
+    # Reconstruct demand points (row ordering matches matrix index)
+    demand = _load_demand()
+    demand["arcgis_min_to_gp"] = demand["demand_id"].map(matrix.min(axis=1))
+
+    # Load SA2 geometries for spatial join
+    sa2 = gpd.read_file(DATA_DIR / "sa2_2021_aust.geojson")
+    sa2 = sa2.to_crs(epsg=4326)
+    sa2["SA2_CODE21"] = sa2["SA2_CODE21"].astype(str)
+
+    # Join each UCL demand point to its containing SA2
+    joined = gpd.sjoin(
+        demand[["locality_name", "population", "arcgis_min_to_gp", "geometry", "demand_id"]],
+        sa2[["SA2_CODE21", "SA2_NAME21", "geometry"]],
+        how="left",
+        predicate="within",
+    )
+
+    # Load Filipcikova SA2 access data — filter to Western NSW to avoid duplicates
+    # from SA2s that span multiple PHN boundaries in the concordance table.
+    fil = load_sa2_access()
+    fil_west = fil[fil["PHN_NAME"] == "Western NSW"]
+    joined = joined.merge(
+        fil_west[["SA2_CODE21", "gp_min"]].rename(columns={"gp_min": "fil_gp_min"}),
+        on="SA2_CODE21",
+        how="left",
+    )
+    joined["delta_min"] = joined["arcgis_min_to_gp"] - joined["fil_gp_min"]
+
+    matched = joined.dropna(subset=["arcgis_min_to_gp", "fil_gp_min"])
+
+    if matched.empty:
+        sys.exit(
+            "No demand points matched after Filipcikova join. "
+            "Check matrix index dtype against demand_id (likely str vs int)."
+        )
+
+    OUT.parent.mkdir(parents=True, exist_ok=True)
+    with OUT.open("w") as f:
+        f.write("# UCL/ArcGIS vs SA2/Filipcikova — Western NSW PHN\n\n")
+        f.write(
+            f"_Generated by `scripts/validate_sa2_vs_ucl.py`. "
+            f"Matched {len(matched)}/{len(joined)} demand points._\n\n"
+        )
+        f.write("## Summary\n\n")
+        f.write(f"- ArcGIS median: {matched['arcgis_min_to_gp'].median():.2f} min\n")
+        f.write(f"- Filipcikova median: {matched['fil_gp_min'].median():.2f} min\n")
+        f.write(f"- Mean delta: {matched['delta_min'].mean():.2f} min\n")
+        f.write(f"- Mean abs delta: {matched['delta_min'].abs().mean():.2f} min\n")
+        f.write(f"- Max abs delta: {matched['delta_min'].abs().max():.2f} min\n")
+        f.write(
+            f"- Pearson correlation: "
+            f"{matched['arcgis_min_to_gp'].corr(matched['fil_gp_min']):.3f}\n\n"
+        )
+        f.write("## Top 15 by population\n\n")
+        cols = ["locality_name", "SA2_NAME21", "population", "arcgis_min_to_gp", "fil_gp_min", "delta_min"]
+        top = matched.nlargest(15, "population")[cols].round(2)
+        f.write(top.to_markdown(index=False))
+        f.write("\n\n## Top 10 outliers by |delta|\n\n")
+        out_df = (
+            matched
+            .assign(abs_delta=matched["delta_min"].abs())
+            .nlargest(10, "abs_delta")[cols]
+            .round(2)
+        )
+        f.write(out_df.to_markdown(index=False))
+        f.write("\n")
+
+    print(f"wrote {OUT}")
+
+
+if __name__ == "__main__":
+    main()

@@ -42,9 +42,11 @@ print("\n1. Data files")
 def _check_data_files():
     required = [
         "data/phn_boundaries.geojson",
-        "data/localities.gpkg",
         "data/gp_locations.geojson",
         "data/dpa.shp",
+        "data/health_access_sa2.csv",
+        "data/phn_sa2_concordance.csv",
+        "data/sa2_2021_aust.geojson",
         "data/checksums.sha256",
     ]
     missing = [f for f in required if not (ROOT / f).exists()]
@@ -104,38 +106,38 @@ def _check_arcgis():
 results.append(check("ArcGIS OAuth2 token fetch", _check_arcgis, skip_if_missing_env="ARCGIS_CLIENT_ID"))
 
 # ── 4. End-to-end pipeline ────────────────────────────────────────────────────
-print("\n4. End-to-end pipeline (diagnostic query, uses cache)")
+print("\n4. End-to-end pipeline (diagnostic query, SA2 precomputed access)")
 
 def _check_pipeline():
     from src.models import QueryParams
-    from src.spatial import load_all_data, build_spatial_context
-    from src.routing import get_travel_time_matrix
-    from src.optimiser import compute_coverage
+    from src.spatial import load_sa2_access, load_sa2_geometries, build_spatial_context_sa2
+    from src.optimiser import diagnose_sa2_coverage
 
     params = QueryParams(
-        mode="diagnostic", region="Western NSW", facility_type="gp",
+        mode="diagnostic", region="Western NSW", facility_type="gp_bulk_billing",
         threshold_min=45, pop_min=500,
     )
-    phn, localities, gp_locations, dpa = load_all_data()
-    ctx = build_spatial_context(params, phn, localities, gp_locations, dpa)
+    access = load_sa2_access()
+    sa2 = load_sa2_geometries()
+    ctx = build_spatial_context_sa2(params, access, sa2)
     assert len(ctx.demand_points) > 0, "No demand points loaded"
-    assert len(ctx.existing_facilities) > 0, "No existing facilities loaded"
 
-    cm = get_travel_time_matrix(ctx.demand_points, ctx.existing_facilities, params.threshold_min)
-    assert not cm.matrix.empty, "Travel time matrix is empty"
+    _, summary = diagnose_sa2_coverage(ctx.demand_points, params.threshold_min, params.facility_type)
+    assert 0 <= summary["coverage_pct"] <= 100, f"Coverage out of range: {summary['coverage_pct']}"
 
-    facility_ids = ctx.existing_facilities["facility_id"].tolist()
-    covered, pct = compute_coverage(ctx.demand_points, facility_ids, cm.matrix, params.threshold_min)
-    assert 0 <= pct <= 100, f"Coverage percentage out of range: {pct}"
+    print(f"     SA2s: {len(ctx.demand_points)}, covered population: {summary['covered_population']:,} ({summary['coverage_pct']:.1f}%)")
 
-    print(f"     demand points: {len(ctx.demand_points)}, facilities: {len(ctx.existing_facilities)}, covered: {covered:,} ({pct:.1f}%)")
-
-results.append(check("spatial + routing + optimiser pipeline", _check_pipeline))
+results.append(check("spatial + SA2 access + optimiser pipeline", _check_pipeline))
 
 def _check_nlp_parse():
-    from src.nlp import parse_query
+    from src.nlp import parse_query, build_tool_schema
+    from src.spatial import load_sa2_access, list_phns
+    access = load_sa2_access()
+    phns = list_phns(access)
     params = parse_query(
-        "Which towns in Western NSW with more than 500 people are more than 45 minutes from the nearest GP?"
+        "Which towns in Western NSW with more than 500 people are more than 45 minutes from the nearest GP?",
+        tool_schema=build_tool_schema(phns),
+        fallback_region="Western NSW",
     )
     assert params.mode == "diagnostic"
     assert params.threshold_min == 45

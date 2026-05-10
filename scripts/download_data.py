@@ -51,6 +51,23 @@ ABS_CENSUS_NSW_URL = (
     "/2021_GCP_UCL_for_NSW_short-header.zip"
 )
 
+# 6. Filipcikova et al. (2026) SA2 weighted travel times — Figshare (CC BY)
+#    Pre-computed travel times to nearest GP and bulk-billing GP for all SA2s nationally.
+FILIPCIKOVA_SA2_URL = "https://ndownloader.figshare.com/files/57536281"
+
+# 7. ABS SA2 2021 boundaries — ArcGIS REST API (ASGS Edition 3, 2021, ~2,473 SA2s)
+#    Paginated query; returns GeoJSON. Requires paging because national total exceeds server limit.
+ABS_SA2_BASE = (
+    "https://geo.abs.gov.au/arcgis/rest/services/ASGS2021/SA2/MapServer/0/query"
+)
+
+# 8. DHDA PHN 2023 ↔ SA2 (ASGS 2021) concordance (official; CC BY 4.0 implied via health.gov.au)
+#    Confirmed URL: HEAD returns HTTP 200, content-type xlsx, 141 KB, last-modified 2024-03-21.
+PHN_SA2_CONCORDANCE_URL = (
+    "https://www.health.gov.au/sites/default/files/2024-03"
+    "/primary-health-networks-phn-2023-statistical-area-level-2-2021.xlsx"
+)
+
 
 def _get(url: str, **kwargs) -> requests.Response:
     resp = requests.get(url, timeout=120, **kwargs)
@@ -180,6 +197,88 @@ def download_population() -> None:
     print(f"  Saved {dest.stat().st_size // 1024} KB as ucl_population_nsw.csv")
 
 
+def download_filipcikova_sa2(out_path: Path) -> None:
+    """Download Filipcikova et al. (2026) SA2 weighted travel times. CC BY."""
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    resp = requests.get(FILIPCIKOVA_SA2_URL, timeout=120, allow_redirects=True)
+    resp.raise_for_status()
+    out_path.write_bytes(resp.content)
+
+
+def download_sa2_boundaries(out_path: Path) -> None:
+    """Download national SA2 2021 boundaries from ABS hosted ArcGIS, paged."""
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fields = "sa2_code_2021,sa2_name_2021,sa3_code_2021,state_code_2021,state_name_2021"
+    page_size = 1000
+    offset = 0
+    features: list[dict] = []
+    while True:
+        params = {
+            "where": "1=1",
+            "outFields": fields,
+            "f": "geojson",
+            "returnGeometry": "true",
+            "resultOffset": offset,
+            "resultRecordCount": page_size,
+        }
+        resp = _get(ABS_SA2_BASE, params=params)
+        page = resp.json()
+        page_features = page.get("features", [])
+        if not page_features:
+            break
+        features.extend(page_features)
+        if len(page_features) < page_size:
+            break
+        offset += page_size
+
+    # Normalise field names to upper-snake to match Filipcikova
+    for f in features:
+        props = f["properties"]
+        f["properties"] = {
+            "SA2_CODE21": str(props["sa2_code_2021"]),
+            "SA2_NAME21": props["sa2_name_2021"],
+            "SA3_CODE21": str(props.get("sa3_code_2021", "")),
+            "STE_CODE21": str(props.get("state_code_2021", "")),
+            "STE_NAME21": props.get("state_name_2021", ""),
+        }
+    out = {"type": "FeatureCollection", "features": features}
+    out_path.write_text(json.dumps(out))
+
+
+def download_phn_sa2_concordance(out_path: Path) -> None:
+    """Download DHDA's official PHN 2023 ↔ SA2 (ASGS 2021) concordance."""
+    import pandas as pd
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    resp = requests.get(PHN_SA2_CONCORDANCE_URL, timeout=120, allow_redirects=True)
+    resp.raise_for_status()
+    raw = out_path.with_suffix(".raw")
+    raw.write_bytes(resp.content)
+
+    if PHN_SA2_CONCORDANCE_URL.endswith(".xlsx"):
+        df = pd.read_excel(raw)
+    else:
+        df = pd.read_csv(raw)
+
+    rename = {
+        "SA2_CODE_2021": "SA2_CODE21",
+        "SA2_MAINCODE_2021": "SA2_CODE21",
+        "PHN_CODE_2023": "PHN_CODE",
+        "PHN_NAME_2023": "PHN_NAME",
+    }
+    df = df.rename(columns={k: v for k, v in rename.items() if k in df.columns})
+    required = {"SA2_CODE21", "PHN_CODE", "PHN_NAME"}
+    missing = required - set(df.columns)
+    if missing:
+        raise RuntimeError(
+            f"Concordance file missing columns {missing}. Got: {list(df.columns)}"
+        )
+    df["SA2_CODE21"] = df["SA2_CODE21"].astype(str)
+    df = df.dropna(subset=["PHN_CODE", "PHN_NAME"])
+    df[["SA2_CODE21", "PHN_CODE", "PHN_NAME"]].to_csv(out_path, index=False)
+    raw.unlink()
+
+
 def _generate_checksums(data_dir: Path, checksum_file: Path) -> None:
     patterns = ["*.geojson", "*.gpkg", "*.shp", "*.csv"]
     lines = []
@@ -202,6 +301,9 @@ def main() -> None:
     download_gp_locations()
     download_dpa()
     download_population()
+    download_filipcikova_sa2(DATA_DIR / "health_access_sa2.csv")
+    download_sa2_boundaries(DATA_DIR / "sa2_2021_aust.geojson")
+    download_phn_sa2_concordance(DATA_DIR / "phn_sa2_concordance.csv")
 
     print()
     checksum_file = DATA_DIR / "checksums.sha256"

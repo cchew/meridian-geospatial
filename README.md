@@ -18,9 +18,29 @@ AI-powered spatial decision support for Australian primary health care planning.
 
 ---
 
+## National Version
+
+Meridian now generalises to all 31 Australian PHNs. The national version differs methodologically from the original single-PHN demo:
+
+- Demand unit: **SA2** (replaces UCL; captures dispersed rural population that UCL excludes by construction)
+- Mode 1 travel times: **Filipcikova et al. 2026** national OSRM dataset (replaces live ArcGIS routing; fixes cross-boundary clipping)
+- Mode 2 routing: ArcGIS / OpenRouteService for candidate × demand only (~5,000 pairs/PHN)
+- PHN ↔ SA2 membership: official DHDA concordance file (replaces polygon intersection)
+
+Mode 1 numbers are not directly comparable to the original single-PHN demo numbers. See [docs/METHODOLOGY.md](docs/METHODOLOGY.md) for the methodological reasoning and [docs/figures/validation-output.md](docs/figures/validation-output.md) for the cross-validation evidence.
+
+```bash
+python scripts/download_data.py     # one-off
+python scripts/precompute_matrix.py # one-off; ~30 minutes for all 31 PHNs
+streamlit run app.py
+```
+
+The PHN selectbox in the app drives all queries. Demo queries reflow to the selected PHN automatically.
+
+---
+
 ## Limitations
 
-- **Western NSW PHN only.** The region is validated against an allowlist; national generalisation requires data validation across diverse PHN geographies.
 - **2021 Census population counts.** Rural population distributions can shift materially over a five-year period.
 - **Road network only.** Seasonal road conditions, patient transport availability, and telehealth substitution are not modelled.
 - **GP facilities only.** Allied health, specialists, and hospitals are out of scope.

@@ -57,6 +57,64 @@ For k = 6, the MCLP solver's output is compared directly against Ochre Health's 
 - **Uniform coverage objective.** The MCLP maximises raw population coverage. It does not weight by health need, disease burden, socioeconomic vulnerability, or estimated facility cost.
 - **DPA as sole need signal.** DPA classification captures GP workforce shortage designation but not demand-side factors such as chronic disease prevalence or Aboriginal and Torres Strait Islander population concentration.
 
+## National Extension (planned)
+
+Generalising Meridian from a single PHN to all 31 PHNs introduces methodological decisions not present in the demo. Decisions below were taken on 2026-05-08 after empirical cross-validation against the current Western NSW demo.
+
+### Demand unit: SA2 (replacing UCL)
+
+The single-PHN demo uses Urban Centres and Localities (UCL) as the demand unit. The national version adopts ABS Statistical Area Level 2 (SA2). Reasoning:
+
+1. **UCL systematically excludes dispersed rural population.** ABS defines UCL as built-up areas with ≥200 people. By construction, UCL omits roughly 15% of the Australian population — concentrated in exactly the regions PHN access analysis is meant to serve. A farming family 25 km outside Cobar belongs to no UCL, so a UCL-based travel-time analysis cannot see them. For a tool whose stated purpose is identifying rural coverage gaps, this is a methodological hole rather than a rounding error.
+2. **SA2 has exhaustive population coverage.** Every person in Australia belongs to exactly one SA2. The replacement travel-time dataset (Filipcikova et al. 2026 [9]) reports `gp_duration` as the population-weighted mean of Mesh Block → nearest GP travel times within each SA2 — the textbook-correct way to summarise area-level access, weighting by where people actually live.
+3. **SA2 aligns with official PHN reporting.** DHDA publishes official PHN ↔ SA2 and PHN ↔ SA3 concordance files [10]; AIHW Medicare-subsidised GP access reports are SA2-based. SA2 outputs are directly comparable to existing official reporting.
+4. **The alternative (UCL with Mesh Block aggregation) requires arbitrary handling of UCL's coverage hole.** Aggregating Mesh Blocks to UCL forces a choice for the ~15% of mesh blocks outside any UCL: assign to nearest UCL, drop, or invent a synthetic boundary. Each is a compromise without principled defence. SA2 has no such issue.
+5. **The single-PHN UCL choice was scope-appropriate, not wrong.** UCL kept the proof-of-concept simple while validating the optimisation architecture. The national extension is the right point to correct the bias.
+
+The Mode 1 numbers from the national version are not directly comparable to the single-PHN demo numbers. This is a methodology change, not a data refresh, and is framed as such in talk and blog.
+
+### Routing source: Filipcikova et al. (2026) for Mode 1
+
+Mode 1 travel times are sourced from Filipcikova et al. (2026) [9], a peer-reviewed national travel-time dataset (CC BY) computed on OSRM over OpenStreetMap. Travel times are pre-computed at SA2 (and Mesh Block) resolution for public hospitals, private hospitals, ED, GP, bulk-billing GP, and pharmacy. Mode 1 becomes a CSV join — no live routing call. This eliminates the cross-boundary clipping artefact present in the single-PHN demo, where edge localities (e.g. Wilcannia, Balranald) appeared uncoverable because their nearest GP lay across a PHN boundary.
+
+Mode 2 retains the existing ArcGIS / OpenRouteService routing layer for candidate-site travel matrices: Filipcikova covers existing facilities only, while Mode 2 must route to hypothetical sites. Per-PHN volume is small (≈50 SA2 demand × ≈100 candidates = 5,000 pairs), well within free-tier and credit budgets.
+
+### Cross-validation evidence (Western NSW PHN, 2026-05-08)
+
+Comparison of current ArcGIS-cached travel times (UCL → nearest GP, clipped to PHN) against Filipcikova SA2 weighted averages, joined via point-in-polygon of UCL centroids to NSW SA2 boundaries (ABS ASGS 2021):
+
+| Metric | ArcGIS / UCL | Filipcikova / SA2 |
+|---|---|---|
+| Median min-time-to-GP | 2.72 min | 12.14 min |
+| Pearson correlation | — | 0.645 |
+| Mean delta | -0.41 min | well-centered |
+| Mean absolute delta | 13.9 min | large per-locality |
+| Max absolute delta | 69.3 min (Balranald) | — |
+
+Outliers and explanations:
+
+| Locality | ArcGIS min | Filipcikova min | Cause |
+|---|---|---|---|
+| Wilcannia | 120.1 | 62.9 | ArcGIS clips GPs to PHN; nearest real GP is interstate. Filipcikova uses national GPs. |
+| Balranald | 99.2 | 29.9 | Same cross-boundary effect; nearest GP in Mildura/VIC. |
+| Condobolin | 51.5 | 12.2 | Different facility vintage; SA2 weighted average covers town-resident population. |
+| Orange | 0.77 | 4.99 | UCL centroid sits adjacent to a GP (in-town); SA2 weighted average covers surrounding mesh blocks. Both correct measures of different things. |
+
+Four factors stack to produce the observed differences: unit of aggregation (dominant), cross-boundary handling, facility vintage, and routing engine. The differences are explainable; none invalidate Filipcikova; the cross-boundary fix is a genuine improvement over the single-PHN demo's clipping behaviour.
+
+### PHN ↔ SA2 concordance: official file
+
+PHN-to-SA2 membership is taken from DHDA's published PHN concordance files (PHN 2023 boundaries against ASGS 2021 SA2) [10] rather than derived from polygon intersection. Spatial overlay of PHN polygons against ABS ASGS polygons produces sliver artefacts due to vintage differences; the official concordance has resolved these.
+
+### Updated limitations (national version)
+
+In addition to the single-PHN limitations above:
+
+- **Population vintage.** Filipcikova uses 2021 Census population. Rural population distributions can shift materially over a five-year period.
+- **Bulk-billing GP under-count.** Bulk-billing GP locations in Filipcikova are public-directory derived (1,282 listings) — under-counts unadvertised bulk-billing practices. This is a limitation of any approach using public directories.
+- **SA2 within-area smoothing.** SA2 weighted averages can hide within-SA2 variation. The Mesh Block file (`mb_2021_distances.csv`) is available for finer-grained drill-down on contested areas.
+- **GP location vintage in Filipcikova.** The dataset description does not state the GP location extraction date. This must be confirmed against the paper before publishing claims about "current" coverage.
+
 ## References
 
 [1] Church, R.L. and ReVelle, C.S. (1974). The maximal covering location problem. *Papers of the Regional Science Association*, 32(1), 101–118.
@@ -74,3 +132,7 @@ For k = 6, the MCLP solver's output is compared directly against Ochre Health's 
 [7] Geoscience Australia (2025). *National Health Services Directory (NHSD) — General Practice locations* [dataset]. https://ecat.ga.gov.au/geonetwork/srv/api/records/1d95ca95-8bd7-4f25-835f-d33c0219435e
 
 [8] Australian Government Department of Health, Disability and Ageing. *Distribution Priority Area (DPA) classification*. https://www.health.gov.au/topics/rural-health-workforce/classifications/dpa
+
+[9] Filipcikova, M., Jorm, L.R., Barbieri, S. (2026). *Travel times and distances to health services in Australia* [dataset]. *Scientific Data*. https://doi.org/10.6084/m9.figshare.30018415
+
+[10] Australian Government Department of Health, Disability and Ageing. *Primary Health Networks (PHN) — collection of concordance files*. https://www.health.gov.au/resources/collections/primary-health-networks-phns-collection-of-concordance-files

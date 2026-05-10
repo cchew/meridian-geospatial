@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.models import ParseError, QueryParams, NarrativeContext, ValidationError
-from src.nlp import parse_query, generate_narrative
+from src.nlp import parse_query, generate_narrative, build_tool_schema
 
 
 def _mock_tool_response(tool_input: dict):
@@ -56,15 +56,17 @@ def test_parse_query_raises_on_non_tool_response(mock_client):
 
 
 @patch("src.nlp._client")
-def test_parse_query_raises_on_invalid_region(mock_client):
+def test_parse_query_accepts_any_region_without_fallback(mock_client):
+    """Region validation is delegated to schema enum; __post_init__ accepts any non-empty region."""
     mock_client.messages.create.return_value = _mock_tool_response({
         "mode": "diagnostic",
         "region": "Murrumbidgee PHN",
         "facility_type": "gp",
         "threshold_min": 45,
     })
-    with pytest.raises(ValidationError):
-        parse_query("Coverage in Murrumbidgee?")
+    # Should not raise — the schema enum is the gatekeeper
+    result = parse_query("Coverage in Murrumbidgee?")
+    assert result.region == "Murrumbidgee PHN"
 
 
 @patch("src.nlp._client")
@@ -105,3 +107,28 @@ def test_generate_narrative_raw_user_text_never_sent(mock_client):
     # The user message should be structured data only — no free text from the UI
     for msg in messages:
         assert "ignore previous" not in str(msg).lower()
+
+
+def test_build_tool_schema_region_enum_has_provided_phns():
+    """build_tool_schema must embed the supplied PHN list as the region enum."""
+    regions = [f"PHN {i}" for i in range(31)]
+    schema = build_tool_schema(regions)
+    region_enum = schema["input_schema"]["properties"]["region"]["enum"]
+    assert region_enum == regions
+    assert len(region_enum) == 31
+
+
+@patch("src.nlp._client")
+def test_parse_query_fallback_region_used_when_missing(mock_client):
+    """When LLM does not return a region, fallback_region is used."""
+    mock_client.messages.create.return_value = _mock_tool_response({
+        "mode": "diagnostic",
+        # region intentionally missing
+        "facility_type": "gp",
+        "threshold_min": 45,
+    })
+    result = parse_query(
+        "Coverage gaps?",
+        fallback_region="Western NSW",
+    )
+    assert result.region == "Western NSW"

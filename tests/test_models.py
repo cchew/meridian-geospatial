@@ -27,18 +27,6 @@ def test_query_params_valid_prescriptive():
     assert p.k == 6
 
 
-def test_query_params_rejects_unknown_region():
-    with pytest.raises(ValidationError, match="region"):
-        QueryParams(
-            mode="diagnostic",
-            region="Murrumbidgee PHN",
-            facility_type="gp",
-            threshold_min=45,
-            k=None,
-            pop_min=None,
-        )
-
-
 def test_query_params_rejects_threshold_out_of_bounds():
     with pytest.raises(ValidationError, match="threshold_min"):
         QueryParams(

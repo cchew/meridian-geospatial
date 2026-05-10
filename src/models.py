@@ -6,9 +6,6 @@ import geopandas as gpd
 import pandas as pd
 
 
-ALLOWED_REGIONS = ["Western NSW"]
-
-
 class ValidationError(ValueError):
     pass
 
@@ -31,11 +28,6 @@ class QueryParams:
     pop_min: int | None = None
 
     def __post_init__(self) -> None:
-        if self.region not in ALLOWED_REGIONS:
-            raise ValidationError(
-                f"region '{self.region}' not supported. "
-                f"Supported: {ALLOWED_REGIONS}"
-            )
         if not 10 <= self.threshold_min <= 120:
             raise ValidationError(
                 f"threshold_min must be between 10 and 120, got {self.threshold_min}"

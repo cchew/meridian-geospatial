@@ -21,42 +21,63 @@ _PARSE_SYSTEM = (
     "Return only the tool call — no prose, no explanations."
 )
 
-_PARSE_TOOL = {
-    "name": "extract_query_params",
-    "description": "Extract structured health planning query parameters from natural language.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "mode": {
-                "type": "string",
-                "enum": ["diagnostic", "prescriptive"],
-                "description": "diagnostic=coverage gaps, prescriptive=facility placement",
+
+def build_tool_schema(regions: list[str] | None = None) -> dict:
+    """Build the Claude tool schema for NL query parsing.
+
+    Args:
+        regions: List of valid PHN region names. When None, falls back to a
+                 static default (Western NSW only) so the module is importable
+                 without live spatial data.
+    """
+    from src.spatial import list_phns, load_sa2_access
+
+    if regions is None:
+        try:
+            regions = list_phns(load_sa2_access())
+        except Exception:
+            regions = ["Western NSW"]
+
+    return {
+        "name": "extract_query_params",
+        "description": "Extract structured health planning query parameters from natural language.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "mode": {
+                    "type": "string",
+                    "enum": ["diagnostic", "prescriptive"],
+                    "description": "diagnostic=coverage gaps, prescriptive=facility placement",
+                },
+                "region": {
+                    "type": "string",
+                    "enum": regions,
+                    "description": "PHN region name, e.g. 'Western NSW'",
+                },
+                "facility_type": {
+                    "type": "string",
+                    "enum": ["gp"],
+                    "description": "Type of health facility",
+                },
+                "threshold_min": {
+                    "type": "integer",
+                    "description": "Travel time threshold in minutes (10-120)",
+                },
+                "k": {
+                    "type": "integer",
+                    "description": "Number of new facilities to place (prescriptive mode only, 1-10)",
+                },
+                "pop_min": {
+                    "type": "integer",
+                    "description": "Minimum population for a locality to be included (0-50000)",
+                },
             },
-            "region": {
-                "type": "string",
-                "description": "PHN region name, e.g. 'Western NSW'",
-            },
-            "facility_type": {
-                "type": "string",
-                "enum": ["gp"],
-                "description": "Type of health facility",
-            },
-            "threshold_min": {
-                "type": "integer",
-                "description": "Travel time threshold in minutes (10-120)",
-            },
-            "k": {
-                "type": "integer",
-                "description": "Number of new facilities to place (prescriptive mode only, 1-10)",
-            },
-            "pop_min": {
-                "type": "integer",
-                "description": "Minimum population for a locality to be included (0-50000)",
-            },
+            "required": ["mode", "region", "facility_type", "threshold_min"],
         },
-        "required": ["mode", "region", "facility_type", "threshold_min"],
-    },
-}
+    }
+
+
+_PARSE_TOOL = build_tool_schema(["Western NSW"])
 
 _NARRATIVE_SYSTEM = (
     "You are a health policy analyst writing briefing notes for PHN executives "
@@ -75,16 +96,31 @@ _NARRATIVE_SYSTEM = (
 )
 
 
-def parse_query(user_input: str) -> QueryParams:
-    """Parse natural language query into QueryParams using Claude tool use."""
+def parse_query(
+    user_input: str,
+    *,
+    tool_schema: dict | None = None,
+    fallback_region: str | None = None,
+) -> QueryParams:
+    """Parse natural language query into QueryParams using Claude tool use.
+
+    Args:
+        user_input: Raw natural-language query from the user.
+        tool_schema: Pre-built tool schema (e.g. with a live PHN enum). When
+                     None the module-level ``_PARSE_TOOL`` static schema is used.
+        fallback_region: PHN name to use as default when the LLM does not return
+                         a region. Typically the currently selected PHN from the app's selectbox.
+    """
     if len(user_input) > MAX_INPUT_CHARS:
         raise ValueError(f"Input exceeds {MAX_INPUT_CHARS} characters")
+
+    active_tool = tool_schema if tool_schema is not None else _PARSE_TOOL
 
     response = _client.messages.create(
         model=MODEL,
         max_tokens=512,
         system=_PARSE_SYSTEM,
-        tools=[_PARSE_TOOL],
+        tools=[active_tool],
         tool_choice={"type": "any"},
         messages=[{"role": "user", "content": user_input}],
     )
@@ -98,10 +134,11 @@ def parse_query(user_input: str) -> QueryParams:
         )
 
     raw = tool_use.input
-    # Raises ValidationError if region/bounds invalid
+    region = raw.get("region", fallback_region or "Western NSW")
+
     return QueryParams(
         mode=raw["mode"],
-        region=raw.get("region", "Western NSW"),
+        region=region,
         facility_type=raw.get("facility_type", "gp"),
         threshold_min=int(raw["threshold_min"]),
         k=int(raw["k"]) if raw.get("k") is not None else None,
