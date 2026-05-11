@@ -4,7 +4,7 @@ AI-powered spatial decision support for Australian primary health care planning.
 
 ![Mode 1 - Diagnostic](presentation/screenshots/mode1-coverage-map.png)
 
-**Flow:** Natural language query → Claude API (NL→params) → [GeoPandas](https://geopandas.org/) + [ArcGIS Network Analyst](https://www.esri.com/en-us/arcgis/products/arcgis-network-analyst/overview) routing → [PuLP](https://coin-or.github.io/pulp/) [MCLP](https://en.wikipedia.org/wiki/Maximum_coverage_problem) solver → Claude API (narrative) → [Folium](https://python-visualization.github.io/folium/) map in [Streamlit](https://streamlit.io/)
+**Flow:** Natural language query → Claude API (NL→params) → [GeoPandas](https://geopandas.org/) + [Filipcikova et al. 2026](https://doi.org/10.25855/uq-f9a2d9ab-d7dc-4862-a8e5-5e9d2ff26474) precomputed access (Mode 1) / [OpenRouteService](https://openrouteservice.org/) or [ArcGIS](https://www.esri.com/en-us/arcgis/products/arcgis-network-analyst/overview) routing (Mode 2) → [PuLP](https://coin-or.github.io/pulp/) [MCLP](https://en.wikipedia.org/wiki/Maximum_coverage_problem) solver → Claude API (narrative) → [Plotly](https://plotly.com/) map in [Streamlit](https://streamlit.io/)
 
 ---
 
@@ -57,7 +57,7 @@ See [docs/METHODOLOGY.md](docs/METHODOLOGY.md) for full methodological detail.
 
 - Python 3.12+
 - Anthropic API key
-- [ArcGIS Online](https://www.arcgis.com/) account with Network Analyst access (or [OpenRouteService](https://openrouteservice.org/) as fallback)
+- [OpenRouteService](https://openrouteservice.org/) API key (free tier) **or** [ArcGIS Online](https://www.arcgis.com/) account with Network Analyst access — for Mode 2 prescriptive only; Mode 1 uses precomputed data with no routing calls
 
 ---
 
@@ -82,10 +82,12 @@ Fill in all values in `.env`:
 | Variable | Description |
 |---|---|
 | `ANTHROPIC_API_KEY` | [Anthropic Console](https://console.anthropic.com/) → API Keys |
-| `ARCGIS_CLIENT_ID` | [ArcGIS Developer portal](https://developers.arcgis.com/) → OAuth 2.0 credentials |
+| `ROUTING_PROVIDER` | `ors` (default) or `arcgis` |
+| `ORS_API_KEY` | [openrouteservice.org](https://openrouteservice.org/) → API key (free tier sufficient) |
+| `ARCGIS_CLIENT_ID` | [ArcGIS Developer portal](https://developers.arcgis.com/) → OAuth 2.0 credentials (if using ArcGIS) |
 | `ARCGIS_CLIENT_SECRET` | Same as above |
-| `ROUTING_PROVIDER` | `arcgis` or `ors` |
-| `ORS_API_KEY` | [openrouteservice.org](https://openrouteservice.org/) → API key (if using ORS) |
+
+Mode 1 (diagnostic) requires no routing credentials — it uses the precomputed Filipcikova dataset. Only Mode 2 (prescriptive) calls the routing provider.
 
 ### 3. Download data
 
@@ -103,10 +105,11 @@ python scripts/verify_data.py
 
 ### 4. Pre-compute travel time matrices
 
-Builds an [ArcGIS OD Cost Matrix](https://pro.arcgis.com/en/pro-app/latest/help/analysis/networks/od-cost-matrix-analysis-layer.htm) for all population centre × facility pairs and caches results to `cache/`. Takes a few minutes on first run; subsequent runs use the cache.
+Builds Mode 2 candidate × demand travel matrices for all 31 PHNs and caches results to `cache/`. Requires a routing provider (ORS or ArcGIS). Takes ~30 minutes on first run; subsequent runs skip already-cached PHNs.
 
 ```bash
-python scripts/precompute_matrix.py
+python scripts/precompute_matrix.py          # all 31 PHNs
+python scripts/precompute_matrix.py --phn "Western NSW"  # single PHN smoke test
 ```
 
 ---
