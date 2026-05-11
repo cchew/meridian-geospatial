@@ -1,5 +1,7 @@
 # Meridian
 
+*Personal project. Views and code are my own and do not represent any past or current employer.*
+
 AI-powered spatial decision support for Australian primary health care planning. Ask plain-English questions about GP coverage gaps; get optimised facility placement recommendations with briefing-quality narrative.
 
 ![Mode 1 - Diagnostic](presentation/screenshots/mode1-coverage-map.png)
