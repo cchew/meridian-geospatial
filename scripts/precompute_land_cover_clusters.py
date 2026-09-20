@@ -20,6 +20,10 @@ Run (from projects/meridian-geospatial/repo/): python3 scripts/precompute_land_c
 from __future__ import annotations
 import json
 import os
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import ee
 import geopandas as gpd
@@ -53,23 +57,31 @@ def get_embedding_image(aoi: ee.Geometry, year: int = 2024) -> ee.Image:
     return collection.mosaic().toFloat().clip(aoi)
 
 
-def pull_sa2_embeddings(sa2: gpd.GeoDataFrame) -> pd.DataFrame:
+def pull_sa2_embeddings(sa2: gpd.GeoDataFrame, batch_size: int = 5) -> pd.DataFrame:
     """One 64-dim AlphaEarth 2024 annual-embedding zonal mean per SA2, via
     server-side reduceRegions (same pattern as
     docs/research/geo-ai/stage2_act_sa1_clustering.py::pull_sa1_embeddings,
-    reimplemented here rather than imported across repos)."""
-    fc = ee.FeatureCollection(json.loads(sa2[["SA2_CODE21", "geometry"]].to_json()))
-    image = get_embedding_image(fc.geometry().bounds(), year=2024)
-    reduced = image.reduceRegions(collection=fc, reducer=ee.Reducer.mean(), scale=10)
-    info = reduced.getInfo()
+    reimplemented here rather than imported across repos).
 
-    rows = []
-    for feat in info["features"]:
-        props = feat["properties"]
-        row = {"SA2_CODE21": props["SA2_CODE21"]}
-        row.update({band: props.get(band) for band in EMBEDDING_BANDS})
-        rows.append(row)
-    return pd.DataFrame(rows)
+    Batched: a single FeatureCollection of all of Western NSW's 38 SA2
+    polygons exceeds Earth Engine's 10MB synchronous getInfo() payload cap
+    (measured: 13.95MB for the input geometry alone) -- discovered when this
+    script was first run for real. Batching keeps each request well under
+    that cap regardless of how large any individual PHN's SA2 polygons are.
+    """
+    all_rows = []
+    for start in range(0, len(sa2), batch_size):
+        batch = sa2.iloc[start:start + batch_size]
+        fc = ee.FeatureCollection(json.loads(batch[["SA2_CODE21", "geometry"]].to_json()))
+        image = get_embedding_image(fc.geometry().bounds(), year=2024)
+        reduced = image.reduceRegions(collection=fc, reducer=ee.Reducer.mean(), scale=10)
+        info = reduced.getInfo()
+        for feat in info["features"]:
+            props = feat["properties"]
+            row = {"SA2_CODE21": props["SA2_CODE21"]}
+            row.update({band: props.get(band) for band in EMBEDDING_BANDS})
+            all_rows.append(row)
+    return pd.DataFrame(all_rows)
 
 
 def main():
@@ -84,6 +96,7 @@ def main():
     sa2_phn = sa2_phn[sa2_phn.geometry.notna() & ~sa2_phn.geometry.is_empty]
     print(f"{PHN_NAME} SA2 polygons: {len(sa2_phn)}")
 
+    print(f"pulling embeddings in batches of 5...")
     embeddings = pull_sa2_embeddings(sa2_phn)
     print(f"embeddings pulled: {len(embeddings)}")
 
