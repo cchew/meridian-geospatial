@@ -57,17 +57,23 @@ def get_embedding_image(aoi: ee.Geometry, year: int = 2024) -> ee.Image:
     return collection.mosaic().toFloat().clip(aoi)
 
 
-def pull_sa2_embeddings(sa2: gpd.GeoDataFrame, batch_size: int = 5) -> pd.DataFrame:
+def pull_sa2_embeddings(sa2: gpd.GeoDataFrame, batch_size: int = 1) -> pd.DataFrame:
     """One 64-dim AlphaEarth 2024 annual-embedding zonal mean per SA2, via
     server-side reduceRegions (same pattern as
     docs/research/geo-ai/stage2_act_sa1_clustering.py::pull_sa1_embeddings,
     reimplemented here rather than imported across repos).
 
-    Batched: a single FeatureCollection of all of Western NSW's 38 SA2
-    polygons exceeds Earth Engine's 10MB synchronous getInfo() payload cap
-    (measured: 13.95MB for the input geometry alone) -- discovered when this
-    script was first run for real. Batching keeps each request well under
-    that cap regardless of how large any individual PHN's SA2 polygons are.
+    Batched with batch_size=1 (one SA2 per getInfo() call): Earth Engine's
+    synchronous compute budget correlates with the call's Area-of-Interest bbox
+    area, not raw feature count. A batch of 5 Western NSW SA2s can span
+    ~1.08° × 1.26° (120km × 140km) because NSW's SA2 sizes vary hugely (small
+    towns to vast sparse rural areas), requiring EE to mosaic many more tiles
+    than a single SA2's tight bbox (~0.1° × 0.16°). A single-SA2 call that
+    succeeded in testing takes ~17s; batch_size=1 means 38 sequential calls
+    (~10-11 minutes total), which is acceptable for a one-off precompute script.
+    If this script is rerun for a different PHN with uniformly smaller SA2
+    bboxes, a larger batch_size may be safe -- but only if individual SA2 bboxes
+    stay small; test with batch_size=1 first.
     """
     all_rows = []
     for start in range(0, len(sa2), batch_size):
@@ -96,7 +102,7 @@ def main():
     sa2_phn = sa2_phn[sa2_phn.geometry.notna() & ~sa2_phn.geometry.is_empty]
     print(f"{PHN_NAME} SA2 polygons: {len(sa2_phn)}")
 
-    print(f"pulling embeddings in batches of 5...")
+    print(f"pulling embeddings (batch_size=1, ~17s per SA2)...")
     embeddings = pull_sa2_embeddings(sa2_phn)
     print(f"embeddings pulled: {len(embeddings)}")
 
