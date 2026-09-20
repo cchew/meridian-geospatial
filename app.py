@@ -20,6 +20,7 @@ from src.spatial import load_sa2_access, load_sa2_geometries, build_spatial_cont
 from src.routing import get_travel_time_matrix
 from src.optimiser import solve_mclp, compute_coverage, diagnose_sa2_coverage
 from src.nlp import parse_query, generate_narrative, build_tool_schema
+from src.land_cover import load_land_cover_labels, format_land_cover_caveat
 from src.visualisation import build_diagnostic_map, build_prescriptive_map
 
 st.set_page_config(
@@ -46,6 +47,11 @@ def demo_queries(phn: str, mode: str) -> list[str]:
 @st.cache_resource(show_spinner=False)
 def _load_sa2_layers():
     return load_sa2_access(), load_sa2_geometries()
+
+
+@st.cache_resource(show_spinner=False)
+def _land_cover_labels() -> dict[str, str]:
+    return load_land_cover_labels()
 
 
 @st.cache_resource(show_spinner=False)
@@ -202,6 +208,12 @@ if analyse_clicked and user_input.strip():
                     cm, k=params.k, threshold_min=params.threshold_min,
                 )
 
+        land_cover_caveat = ""
+        if opt_result is not None:
+            land_cover_caveat = format_land_cover_caveat(
+                opt_result.selected_sites, _land_cover_labels()
+            )
+
         existing_ids = ctx.existing_facilities["facility_id"].tolist() if "facility_id" in ctx.existing_facilities.columns else []
         covered_pop, pct = compute_coverage(ctx.demand_points, existing_ids, cm.matrix, params.threshold_min)
         total_pop = int(ctx.demand_points["population"].sum())
@@ -232,6 +244,8 @@ if analyse_clicked and user_input.strip():
                 k=params.k,
             )
             narrative = generate_narrative(narrative_ctx)
+            if land_cover_caveat:
+                narrative += f"\n\n{land_cover_caveat}"
 
         ctx.demand_points["covered"] = ctx.demand_points.apply(
             lambda row: (

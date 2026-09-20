@@ -317,6 +317,79 @@ def test_mode2_western_nsw_k2_returns_two_sites(monkeypatch):
     assert result.coverage_pct_after >= result.coverage_pct_before
 
 
+def test_mode2_land_cover_caveat_flags_non_built_up_selected_site(monkeypatch):
+    """Integration: format_land_cover_caveat correctly flags a real selected
+    site when its SA2 code is labelled non-built-up, using the actual
+    Western NSW Mode 2 pipeline output (not a synthetic GeoDataFrame)."""
+    from src.models import QueryParams, CoverageMatrix
+    from src.spatial import (
+        load_sa2_access,
+        load_sa2_geometries,
+        load_facility_layers,
+        build_spatial_context_sa2_prescriptive,
+    )
+    from src.optimiser import solve_mclp
+    from src.land_cover import format_land_cover_caveat
+    import src.routing as routing
+    import numpy as np
+
+    access = load_sa2_access()
+    sa2 = load_sa2_geometries()
+    gp, dpa, phn = load_facility_layers()
+    params = QueryParams(
+        mode="prescriptive", region="Western NSW", facility_type="gp",
+        threshold_min=45, k=2, pop_min=500,
+    )
+    ctx = build_spatial_context_sa2_prescriptive(params, access, sa2, gp, dpa, phn)
+
+    all_facilities = gpd.GeoDataFrame(
+        pd.concat([ctx.existing_facilities, ctx.candidates], ignore_index=True),
+        crs=ctx.existing_facilities.crs,
+    )
+    demand_ids = ctx.demand_points["demand_id"].astype(str).tolist()
+    facility_ids = all_facilities["facility_id"].tolist()
+    candidate_ids = ctx.candidates["facility_id"].tolist() if "facility_id" in ctx.candidates.columns else []
+
+    matrix_data = np.full((len(demand_ids), len(facility_ids)), 999.0)
+    for col_idx, fid in enumerate(facility_ids):
+        if fid in candidate_ids[:2]:
+            matrix_data[:, col_idx] = 10.0
+    synthetic_matrix = pd.DataFrame(matrix_data, index=demand_ids, columns=facility_ids)
+    synthetic_cm = CoverageMatrix(matrix=synthetic_matrix, demand_ids=demand_ids, facility_ids=facility_ids)
+    monkeypatch.setattr(routing, "get_travel_time_matrix", lambda *a, **kw: synthetic_cm)
+
+    cm = routing.get_travel_time_matrix(ctx.demand_points, all_facilities, params.threshold_min)
+    result = solve_mclp(ctx.demand_points, ctx.candidates, ctx.existing_facilities, cm, k=2, threshold_min=45)
+
+    assert len(result.selected_sites) == 2
+    selected_codes = result.selected_sites["SA2_CODE21"].astype(str).tolist()
+
+    # Label the first selected site's SA2 non-built-up, the second built-up.
+    labels = {selected_codes[0]: "non-built-up", selected_codes[1]: "built-up"}
+    caveat = format_land_cover_caveat(result.selected_sites, labels)
+
+    flagged_name = result.selected_sites.iloc[0]["locality_name"]
+    other_name = result.selected_sites.iloc[1]["locality_name"]
+    assert flagged_name in caveat
+    assert other_name not in caveat
+    assert "field verification" in caveat
+
+
+def test_mode2_land_cover_caveat_empty_when_region_not_precomputed():
+    """format_land_cover_caveat degrades to the 'not yet available' note
+    (not a crash, not silence) when the labels cache has no entries for
+    the selected sites' SA2 codes -- the state real Mode 2 usage will hit
+    for every PHN except Western NSW until more regions are precomputed."""
+    from src.land_cover import format_land_cover_caveat
+
+    sites = gpd.GeoDataFrame(
+        {"SA2_CODE21": ["999999999"], "locality_name": ["Some Town"]},
+        geometry=[Point(0, 0)],
+        crs="EPSG:4326",
+    )
+    assert "not yet available" in format_land_cover_caveat(sites, {})
+
+
 def test_all_phns_diagnostic_succeeds():
     """Smoke test: Mode 1 (diagnostic) succeeds for all 31 PHNs."""
     import subprocess
