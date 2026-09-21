@@ -25,10 +25,15 @@ def load_land_cover_labels(path: Path = LABELS_PATH) -> dict[str, str]:
 
 
 def format_land_cover_caveat(selected_sites: gpd.GeoDataFrame, labels: dict[str, str]) -> str:
-    """Deterministic caveat text, computed independently of and appended
-    AFTER generate_narrative()'s LLM call -- never passed through it. A fact
-    given to that free-form prompt is not guaranteed to survive verbatim
-    into its output, which is unacceptable for a safety-relevant caveat.
+    """Deterministic caveat text, computed independently of generate_narrative()'s
+    LLM call -- never passed through it. A fact given to that free-form prompt
+    is not guaranteed to survive verbatim into its output, which is unacceptable
+    for a safety-relevant caveat. Rendered by app.py as its own st.warning()
+    box next to the proposed-sites list (not appended to the narrative text) --
+    a live UX check found the caveat, when trailing 15+ lines of narrative
+    bullet points with no visual distinction, was easy for a skimming reader
+    to miss entirely. No leading "Note:" here since st.warning()'s icon/colour
+    already signal that.
 
     Evaluated per selected site, independently of any other site's coverage
     -- partial cache coverage is never silently treated as full coverage:
@@ -63,14 +68,14 @@ def format_land_cover_caveat(selected_sites: gpd.GeoDataFrame, labels: dict[str,
     if flagged_names:
         verb = "has" if len(flagged_names) == 1 else "have"
         parts.append(
-            f"Note: {len(flagged_names)} of the proposed sites "
+            f"{len(flagged_names)} of the proposed sites "
             f"({', '.join(flagged_names)}) {verb} a satellite land-cover profile "
             f"more consistent with rural/vegetated area than township; "
             f"recommend field verification before commissioning."
         )
     if uncovered_count:
         parts.append(
-            f"Note: land-cover verification is not yet available for "
+            f"Land-cover verification is not yet available for "
             f"{uncovered_count} of the proposed sites (satellite embedding "
             f"not yet computed for their area)."
         )

@@ -190,7 +190,10 @@ def test_diagnostic_analysis_renders_results(mocked_pipeline):
 def test_mode2_prescriptive_analysis_renders_land_cover_caveat(mocked_pipeline):
     """End-to-end UI check: a Mode 2 (prescriptive) run whose MCLP result
     includes a site labelled non-built-up must show the field-verification
-    caveat in the rendered narrative, not just in a unit-tested helper."""
+    caveat as its own warning box next to the proposed-sites list (not
+    buried in the narrative text -- moved there after a live UX check found
+    the narrative-trailing placement easy for a skimming reader to miss),
+    not just in a unit-tested helper."""
     selected_sites = gpd.GeoDataFrame(
         {"SA2_CODE21": ["103021062"], "locality_name": ["Condobolin"], "facility_id": ["c0"]},
         geometry=[Point(147.15, -33.08)],
@@ -220,14 +223,18 @@ def test_mode2_prescriptive_analysis_renders_land_cover_caveat(mocked_pipeline):
 
     assert not at.exception
     assert "results" in at.session_state
+    caveat = at.session_state["results"]["land_cover_caveat"]
+    assert "Condobolin" in caveat
+    assert "field verification" in caveat
+    # The narrative itself no longer carries the caveat -- it's the fixed
+    # mocked generate_narrative() string, unaffected by land-cover findings.
     narrative = at.session_state["results"]["narrative"]
-    assert "Condobolin" in narrative
-    assert "field verification" in narrative
-    # Confirm the caveat is genuinely rendered on the page (st.write(narrative)
-    # produces a Markdown element), not only present in session_state.
-    rendered_text = "\n".join(md.value for md in at.markdown)
-    assert "field verification" in rendered_text
-    assert "Condobolin" in rendered_text
+    assert "field verification" not in narrative
+    # Confirm the caveat is genuinely rendered on the page as its own
+    # warning box (st.warning), not only present in session_state.
+    rendered_warnings = "\n".join(w.value for w in at.warning)
+    assert "field verification" in rendered_warnings
+    assert "Condobolin" in rendered_warnings
 
 
 def test_switching_modes_clears_results(mocked_pipeline):

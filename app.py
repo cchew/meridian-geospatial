@@ -244,8 +244,6 @@ if analyse_clicked and user_input.strip():
                 k=params.k,
             )
             narrative = generate_narrative(narrative_ctx)
-            if land_cover_caveat:
-                narrative += f"\n\n{land_cover_caveat}"
 
         ctx.demand_points["covered"] = ctx.demand_points.apply(
             lambda row: (
@@ -276,6 +274,7 @@ if analyse_clicked and user_input.strip():
             "threshold_min": params.threshold_min,
             "opt_result": opt_result,
             "narrative": narrative,
+            "land_cover_caveat": land_cover_caveat,
         }
 
 elif analyse_clicked and not user_input.strip():
@@ -311,6 +310,8 @@ if "results" in st.session_state:
             st.write("**Proposed locations:**")
             for _, site in opt_result.selected_sites.iterrows():
                 st.write(f"- {site.get('locality_name', 'Unknown')}")
+            if r.get("land_cover_caveat"):
+                st.warning(r["land_cover_caveat"])
 
         st.divider()
         st.subheader("Briefing Summary")
