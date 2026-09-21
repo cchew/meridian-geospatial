@@ -14,6 +14,7 @@ from src.models import (
     SpatialContext,
     CoverageMatrix,
     NarrativeContext,
+    OptimisationResult,
 )
 
 # Synthetic SA2 population for mock: 3 SA2s totalling 10000
@@ -105,16 +106,12 @@ def mocked_pipeline():
     """Patch all external dependencies so AppTest runs without real data or APIs."""
     with (
         patch("src.security.verify_checksums"),
-        patch("src.spatial.load_all_data", return_value=(
-            _phn(), _localities(), _gp_locations(), _dpa()
-        )),
         patch("src.spatial.load_sa2_access", return_value=pd.DataFrame()),
         patch("src.spatial.load_sa2_geometries", return_value=gpd.GeoDataFrame(geometry=[], crs="EPSG:4326")),
         patch("src.spatial.list_phns", return_value=["Western NSW"]),
         patch("src.spatial.load_facility_layers", return_value=(
             _gp_locations(), _dpa(), _phn()
         )),
-        patch("src.spatial.build_spatial_context", return_value=_spatial_context()),
         patch("src.spatial.build_spatial_context_sa2", return_value=_spatial_context()),
         patch("src.spatial.build_spatial_context_sa2_prescriptive", return_value=_spatial_context()),
         patch("src.optimiser.diagnose_sa2_coverage", return_value=(
@@ -131,6 +128,7 @@ def mocked_pipeline():
         )),
         patch("src.visualisation.build_diagnostic_map", return_value=go.Figure()),
         patch("src.visualisation.build_prescriptive_map", return_value=go.Figure()),
+        patch("src.land_cover.load_land_cover_labels", return_value={}),
     ):
         yield
 
@@ -187,6 +185,49 @@ def test_diagnostic_analysis_renders_results(mocked_pipeline):
     assert "results" in at.session_state
     assert at.session_state["results"]["narrative"] != ""
     assert at.session_state["results"]["total_pop"] == _SA2_TOTAL_POP  # from mocked SA2 summary
+
+
+def test_mode2_prescriptive_analysis_renders_land_cover_caveat(mocked_pipeline):
+    """End-to-end UI check: a Mode 2 (prescriptive) run whose MCLP result
+    includes a site labelled non-built-up must show the field-verification
+    caveat in the rendered narrative, not just in a unit-tested helper."""
+    selected_sites = gpd.GeoDataFrame(
+        {"SA2_CODE21": ["103021062"], "locality_name": ["Condobolin"], "facility_id": ["c0"]},
+        geometry=[Point(147.15, -33.08)],
+        crs="EPSG:4326",
+    )
+    opt_result = OptimisationResult(
+        selected_sites=selected_sites,
+        covered_before=5000, covered_after=8000,
+        coverage_pct_before=50.0, coverage_pct_after=80.0,
+    )
+    with (
+        patch("src.nlp.parse_query", return_value=QueryParams(
+            mode="prescriptive", region="Western NSW", facility_type="gp",
+            threshold_min=45, k=2, pop_min=500,
+        )),
+        patch("src.optimiser.solve_mclp", return_value=opt_result),
+        patch("src.land_cover.load_land_cover_labels", return_value={"103021062": "non-built-up"}),
+    ):
+        at = AppTest.from_file(APP_PATH, default_timeout=TIMEOUT)
+        at.run()
+        at.radio[0].set_value("prescriptive").run()
+        at.text_area[0].set_value(
+            "Where should the next 2 GP clinics go in Western NSW within 45 minutes?"
+        ).run()
+        analyse_btn = next(b for b in at.button if b.label == "Analyse")
+        analyse_btn.click().run()
+
+    assert not at.exception
+    assert "results" in at.session_state
+    narrative = at.session_state["results"]["narrative"]
+    assert "Condobolin" in narrative
+    assert "field verification" in narrative
+    # Confirm the caveat is genuinely rendered on the page (st.write(narrative)
+    # produces a Markdown element), not only present in session_state.
+    rendered_text = "\n".join(md.value for md in at.markdown)
+    assert "field verification" in rendered_text
+    assert "Condobolin" in rendered_text
 
 
 def test_switching_modes_clears_results(mocked_pipeline):
