@@ -64,24 +64,30 @@ def pull_sa2_embeddings(sa2: gpd.GeoDataFrame, batch_size: int = 1) -> pd.DataFr
     docs/research/geo-ai/stage2_act_sa1_clustering.py::pull_sa1_embeddings,
     reimplemented here rather than imported across repos).
 
-    Batched with batch_size=1 (one SA2 per getInfo() call): Earth Engine's
-    synchronous compute budget correlates with the call's Area-of-Interest bbox
-    area, not raw feature count. A batch of 5 Western NSW SA2s can span
-    ~1.08° × 1.26° (120km × 140km) because NSW's SA2 sizes vary hugely (small
-    towns to vast sparse rural areas), requiring EE to mosaic many more tiles
-    than a single SA2's tight bbox (~0.1° × 0.16°). A single-SA2 call that
-    succeeded in testing takes ~17s; batch_size=1 means 38 sequential calls
-    (~10-11 minutes total), which is acceptable for a one-off precompute script.
-    If this script is rerun for a different PHN with uniformly smaller SA2
-    bboxes, a larger batch_size may be safe -- but only if individual SA2 bboxes
-    stay small; test with batch_size=1 first.
+    Reduced at scale=200 with tileScale=8, not at AlphaEarth's native 10m.
+    Western NSW's SA2s span 94 km^2 to 146,684 km^2; at 10m the largest is
+    ~1.5 trillion pixels, which is intractable for Earth Engine's synchronous
+    compute budget no matter how the work is batched or tiled -- it times out
+    consistently, not intermittently. scale=200 cuts the pixel count ~400x
+    while staying far finer than the SA2 polygons themselves (~10km-140km
+    across), which is ample for the coarse 3-cluster land-use signal this
+    script produces (not fine-detail mapping). tileScale=8 tells EE to use
+    smaller internal compute tiles, giving each request extra headroom.
+    Verified live at both size extremes: SA2 103011059 (94 km^2) in 6.24s and
+    SA2 105021098 (146,684 km^2) in 32.28s, both returning band means in the
+    expected -1 to 1 range.
+
+    batch_size=1 (one SA2 per getInfo() call) and the retry/backoff loop below
+    remain as complementary defence: smaller per-call AOIs and a retry on
+    genuine transient EE load still help, they just were not the fix for the
+    timeouts above.
     """
     all_rows = []
     for start in range(0, len(sa2), batch_size):
         batch = sa2.iloc[start:start + batch_size]
         fc = ee.FeatureCollection(json.loads(batch[["SA2_CODE21", "geometry"]].to_json()))
         image = get_embedding_image(fc.geometry().bounds(), year=2024)
-        reduced = image.reduceRegions(collection=fc, reducer=ee.Reducer.mean(), scale=10)
+        reduced = image.reduceRegions(collection=fc, reducer=ee.Reducer.mean(), scale=200, tileScale=8)
         for attempt in range(1, 4):
             try:
                 info = reduced.getInfo()
