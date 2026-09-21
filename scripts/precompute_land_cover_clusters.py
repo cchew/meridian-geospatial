@@ -65,7 +65,8 @@ def pull_sa2_embeddings(sa2: gpd.GeoDataFrame, batch_size: int = 1) -> pd.DataFr
     reimplemented here rather than imported across repos).
 
     Reduced at scale=200 with tileScale=8, not at AlphaEarth's native 10m.
-    Western NSW's SA2s span 94 km^2 to 146,684 km^2; at 10m the largest is
+    Western NSW's SA2s range up to 146,684 km^2 (tested at both a small,
+    94 km^2, SA2 and the largest in the dataset); at 10m the largest is
     ~1.5 trillion pixels, which is intractable for Earth Engine's synchronous
     compute budget no matter how the work is batched or tiled -- it times out
     consistently, not intermittently. scale=200 cuts the pixel count ~400x
@@ -96,7 +97,7 @@ def pull_sa2_embeddings(sa2: gpd.GeoDataFrame, batch_size: int = 1) -> pd.DataFr
                 if attempt == 3:
                     raise
                 sleep_s = 10 if attempt == 1 else 30
-                print(f"  retry {attempt}/3 for SA2 batch after EEException: {e}")
+                print(f"  retry {attempt} (of 2) for SA2 batch after EEException: {e}")
                 time.sleep(sleep_s)
         for feat in info["features"]:
             props = feat["properties"]
@@ -118,12 +119,14 @@ def main():
     sa2_phn = sa2_phn[sa2_phn.geometry.notna() & ~sa2_phn.geometry.is_empty]
     print(f"{PHN_NAME} SA2 polygons: {len(sa2_phn)}")
 
-    print(f"pulling embeddings (batch_size=1, ~17s per SA2)...")
+    print("pulling embeddings (6-32s per SA2 depending on polygon size)...")
     embeddings = pull_sa2_embeddings(sa2_phn)
     print(f"embeddings pulled: {len(embeddings)}")
 
     merged = sa2_phn.merge(embeddings, on="SA2_CODE21", how="inner")
+    before_dropna = len(merged)
     merged = merged.dropna(subset=EMBEDDING_BANDS + ["Person"])
+    print(f"merged rows: {before_dropna}, after dropping null embedding bands/population: {len(merged)}")
 
     merged["area_km2"] = merged.to_crs(EQUAL_AREA_CRS).geometry.area / 1e6
     before = len(merged)

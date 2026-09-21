@@ -30,25 +30,21 @@ def format_land_cover_caveat(selected_sites: gpd.GeoDataFrame, labels: dict[str,
     given to that free-form prompt is not guaranteed to survive verbatim
     into its output, which is unacceptable for a safety-relevant caveat.
 
-    Three states:
+    Evaluated per selected site, independently of any other site's coverage
+    -- partial cache coverage is never silently treated as full coverage:
       - selected_sites is empty -> "" (nothing was proposed, nothing to say)
-      - none of selected_sites' SA2 codes are keys in `labels`
-        -> region not yet covered by the precompute step; returns a short
-           note, so silence is never misread as "checked, all clear"
-      - codes present in `labels`, none "non-built-up" -> "" (checked, clear)
-      - one or more "non-built-up" -> the field-verification caveat
+      - a site's SA2 code is not a key in `labels` -> counted as uncovered;
+        if any sites are uncovered, a short note says so, so silence is
+        never misread as "checked, all clear" (this also covers the case
+        where none of the codes are in `labels` -- the whole region)
+      - a site's SA2 code is a key in `labels` and labelled "non-built-up"
+        -> counted as flagged; if any sites are flagged, the
+        field-verification caveat names them
+      - both notes can appear together; if neither applies -> "" (checked,
+        clear)
     """
     if len(selected_sites) == 0:
         return ""
-
-    codes = selected_sites["SA2_CODE21"].astype(str).tolist()
-    covered_codes = [c for c in codes if c in labels]
-
-    if not covered_codes:
-        return (
-            "Note: land-cover verification is not yet available for this "
-            "region (satellite embedding not yet computed here)."
-        )
 
     flagged_names = [
         row["locality_name"]
@@ -56,13 +52,26 @@ def format_land_cover_caveat(selected_sites: gpd.GeoDataFrame, labels: dict[str,
         if str(row["SA2_CODE21"]) in labels
         and labels[str(row["SA2_CODE21"])] == "non-built-up"
     ]
+    uncovered_count = sum(
+        1 for c in selected_sites["SA2_CODE21"].astype(str) if c not in labels
+    )
 
-    if not flagged_names:
+    if not flagged_names and not uncovered_count:
         return ""
 
-    return (
-        f"Note: {len(flagged_names)} of the proposed sites "
-        f"({', '.join(flagged_names)}) have a satellite land-cover profile "
-        f"more consistent with rural/vegetated area than township; "
-        f"recommend field verification before commissioning."
-    )
+    parts = []
+    if flagged_names:
+        verb = "has" if len(flagged_names) == 1 else "have"
+        parts.append(
+            f"Note: {len(flagged_names)} of the proposed sites "
+            f"({', '.join(flagged_names)}) {verb} a satellite land-cover profile "
+            f"more consistent with rural/vegetated area than township; "
+            f"recommend field verification before commissioning."
+        )
+    if uncovered_count:
+        parts.append(
+            f"Note: land-cover verification is not yet available for "
+            f"{uncovered_count} of the proposed sites (satellite embedding "
+            f"not yet computed for their area)."
+        )
+    return " ".join(parts)

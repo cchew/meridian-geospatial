@@ -57,3 +57,15 @@ def test_caveat_names_flagged_sites_only():
     assert "Rural Block" in text
     assert "field verification" in text
     assert "Town A" not in text
+
+
+def test_caveat_partial_coverage_flags_and_notes_uncovered():
+    sites = _sites(
+        ["101021008", "999999999"], ["Rural Block", "Nowhereville"]
+    )
+    labels = {"101021008": "non-built-up"}
+    text = format_land_cover_caveat(sites, labels)
+    assert "Rural Block" in text
+    assert "field verification" in text
+    assert "1" in text
+    assert "not yet available" in text

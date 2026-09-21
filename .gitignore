@@ -5,6 +5,7 @@
 .streamlit/secrets.toml
 .superpowers/
 .venv/
+venv/
 __pycache__/
 cache/*
 !cache/.gitkeep
