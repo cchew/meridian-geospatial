@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -81,7 +82,16 @@ def pull_sa2_embeddings(sa2: gpd.GeoDataFrame, batch_size: int = 1) -> pd.DataFr
         fc = ee.FeatureCollection(json.loads(batch[["SA2_CODE21", "geometry"]].to_json()))
         image = get_embedding_image(fc.geometry().bounds(), year=2024)
         reduced = image.reduceRegions(collection=fc, reducer=ee.Reducer.mean(), scale=10)
-        info = reduced.getInfo()
+        for attempt in range(1, 4):
+            try:
+                info = reduced.getInfo()
+                break
+            except ee.ee_exception.EEException as e:
+                if attempt == 3:
+                    raise
+                sleep_s = 10 if attempt == 1 else 30
+                print(f"  retry {attempt}/3 for SA2 batch after EEException: {e}")
+                time.sleep(sleep_s)
         for feat in info["features"]:
             props = feat["properties"]
             row = {"SA2_CODE21": props["SA2_CODE21"]}
